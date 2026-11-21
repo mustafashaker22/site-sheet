@@ -113,6 +113,7 @@ function syncAll(force) {
   if (S.role === 'sup') return syncDispatch(force);
   var ids = S.order.filter(function (id) {
     var r = S.reports[id]; if (!r || r.closedSynced || r.handedTo) return false;
+    if (!r.sid && !(r.data.rows || []).length && !(r.data.events || []).length && !r.final) return false;
     var stale = Date.now() - (r.lastPing || 0) > 3 * 60000; // نبعت كل 3 دقايق للتنبيهات اللحظية
     return r.updatedAt > (r.syncedAt || 0) || (force && !r.final) || (!r.final && stale);
   });
@@ -184,7 +185,9 @@ function renderHome() {
     var hd = r.data.header || {}, n = (r.data.rows || []).length;
     var st = r.handedTo ? '<span class="st s">🔁 اتسلمت لـ ' + esc(r.handedTo) + '</span>' : r.closedSynced ? '<span class="st f">✅ خلصت واتبعتت</span>' : r.final ? '<span class="st p">⏳ خلصت — مستنية نت</span>' :
       (r.updatedAt > (r.syncedAt || 0) ? '<span class="st p">⏳ شغالة — مستنية نت</span>' : '<span class="st s">🟢 شغالة</span>');
-    return '<div class="it" onclick="openRep(\'' + id + '\')"><div><b>' + esc(hd.client || 'بدون عميل') + '</b><br><span class="muted">' + esc(hd.element || '') + ' · ' + esc(hd.date) + ' · ' + n + ' عربية</span></div>' + st + '</div>';
+    var canDel = !r.final && !r.closedSynced && !r.handedTo && !n;
+    return '<div class="it" onclick="openRep(\'' + id + '\')"><div><b>' + esc(hd.client || 'بدون عميل') + (hd.site ? ' — ' + esc(hd.site) : '') + '</b><br><span class="muted">' + esc(hd.element || '') + ' · ' + esc(hd.date) + ' · ' + n + ' عربية</span></div>' +
+      '<div style="display:flex;gap:6px;align-items:center">' + st + (canDel ? '<button class="mini del" onclick="event.stopPropagation();delReport(\'' + id + '\')">🗑</button>' : '') + '</div></div>';
   }).join('');
   h += '<div class="card list" style="padding:0">' + (items || '<p class="center muted" style="padding:20px">مفيش صبات لسه</p>') + '</div>';
   h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="refreshLists()">🔄 تحديث</button><button class="btn l" onclick="cleanup()">🧹 مسح القديم</button></div>';
@@ -196,6 +199,12 @@ function refreshLists() {
   toast('⏳ بيحدّث…');
   api({ action: 'login', code: S.code }).then(function (r) { if (r.ok) { S.clients = r.clients || []; S.sites = r.sites || {}; save(); toast('✅ القوايم اتحدثت'); } }).catch(function () {});
   syncAll(true);
+}
+function delReport(id) {
+  var r = S.reports[id]; if (!r) return;
+  if (!confirm('تمسح الصبة دي؟ (' + ((r.data.header || {}).client || 'بدون عميل') + ')')) return;
+  if (r.sid && navigator.onLine) api({ action: 'discard', code: S.code, repId: id }).catch(function () {});
+  delete S.reports[id]; S.order = S.order.filter(function (x) { return x !== id; }); save(); render();
 }
 function logout() { if (confirm('خروج؟ الصبات اللي متبعتتش هتفضل محفوظة.')) { delete S.code; save(); render(); } }
 function cleanup() {
@@ -242,6 +251,10 @@ function pickSup(k, v) {
   if (k === 'client') { var st = S.sites[v] || []; supForm.site = st.length === 1 ? st[0] : ''; }
   renderSupForm();
 }
+function cancelNew() {
+  if ((cur.data.rows || []).length) { view = 'rep'; return render(); }
+  var id = cur.id; delete S.reports[id]; S.order = S.order.filter(function (x) { return x !== id; }); save(); goHome();
+}
 function renderHeader() {
   var h = cur.data.header;
   var opts = S.clients.map(function (c) { return '<option value="' + esc(c) + '">'; }).join('');
@@ -253,7 +266,7 @@ function renderHeader() {
     '<div><label>طريقة الصب</label><select data-p="header.pour_method" onchange="setP(this)">' + ['مضخة', 'مزراب'].map(function (x) { return '<option' + (h.pour_method === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
     fld('header.pump_id', 'رقم المضخة', h.pump_id) + fld('header.operator', 'المشغل', h.operator) + fld('header.site_manager', 'مسئول الموقع', h.site_manager) +
     fld('header.distance_km', 'المسافة كم', h.distance_km, 'inputmode="decimal" data-n') + '</div></div>' +
-    '<div class="bar"><button class="btn g big" onclick="if(!cur.data.header.client){toast(\'اختار العميل\');return}view=\'rep\';render();syncAll(true)">التالي ← العربيات</button></div>';
+    '<div class="bar">' + (!(cur.data.rows || []).length ? '<button class="btn l" style="width:32%" onclick="cancelNew()">✕ إلغاء</button>' : '') + '<button class="btn g big" onclick="if(!cur.data.header.client){toast(\'اختار العميل\');return}view=\'rep\';render();syncAll(true)">التالي ← العربيات</button></div>';
 }
 
 function liveLocal() {
