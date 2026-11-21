@@ -117,6 +117,16 @@ function syncAll(force) {
     var stale = Date.now() - (r.lastPing || 0) > 3 * 60000; // نبعت كل 3 دقايق للتنبيهات اللحظية
     return r.updatedAt > (r.syncedAt || 0) || (force && !r.final) || (!r.final && stale);
   });
+  // صبة فاضية لسه مش بتتسجل، بس نجيبلها العربيات الجاية
+  S.order.forEach(function (id) {
+    var r = S.reports[id];
+    if (!r || r.sid || r.final || r.handedTo || (r.data.rows || []).length || !r.data.header.client) return;
+    if (!force && Date.now() - (r.lastIncoming || 0) < 60000) return;
+    r.lastIncoming = Date.now();
+    api({ action: 'incoming', code: S.code, client: r.data.header.client, site: r.data.header.site }).then(function (res) {
+      if (res && res.ok) { r.incoming = res.incoming || []; save(); if (view === 'rep' && cur === r) renderReport(); }
+    }).catch(function () {});
+  });
   if (!ids.length) return;
   syncing = true;
   var i = 0;
@@ -157,9 +167,11 @@ function render() {
   setNet();
   if (!S.api) return renderNoApi();
   if (!S.code) return renderLogin();
-  if (S.role === 'sup') return renderSup();
+  if (S.role === 'sup') { if (view === 'pours' || view === 'pour') view = 'home'; return renderSup(); }
   if (view === 'rep' && cur) return renderReport();
   if (view === 'head' && cur) return renderHeader();
+  if (view === 'left' && cur && leftForm) return renderLeft();
+  if (view === 'move' && cur && moveForm) return renderMove();
   renderHome();
 }
 function renderNoApi() {
@@ -319,13 +331,79 @@ function addTruck() {
   touch(); renderReport();
   setTimeout(function () { window.scrollTo(0, document.body.scrollHeight); var t = document.querySelector('[data-p="rows.' + (rows.length - 1) + '.truck"]'); if (t) t.focus(); }, 50);
 }
+/* الإجهاد الحالي: آخر نقل لعنصر قبل العربية دي، وإلا بتاع الصبة */
+function gradeAt(i) {
+  var h = cur.data.header, g = { gs: h.grade_strength || '', cc: h.cement_content || '' };
+  cur.data.events.forEach(function (e) { if (e.type === 'element_move' && +e.after_row <= i + 1 && (e.grade_strength || e.cement_content)) g = { gs: e.grade_strength || '', cc: e.cement_content || '' }; });
+  return g;
+}
+var moveForm = null;
 function moveLine(i) {
-  var el = prompt('الباقي اتنقل على أنهي عنصر؟ (مثلاً: السلم)');
-  if (el === null || !el.trim()) return;
-  var q = prompt('الكمية تقريباً م³؟ (ممكن تسيبها فاضية)');
-  cur.data.events.push({ type: 'element_move', type_ar: 'نقل لعنصر تاني', element: el.trim(), qty_m3: q ? Number(q) || q : null,
-    from: nowHM(), to: null, after_row: i + 1, text: 'الباقي اتنقل على ' + el.trim() + (q ? ' (' + q + ' م³)' : '') });
-  touch(); renderReport();
+  var g = gradeAt(i);
+  moveForm = { i: i, element: '', qty: '', grade_strength: g.gs, cement_content: g.cc, old: g };
+  view = 'move'; render(); window.scrollTo(0, 0);
+}
+function renderMove() {
+  var f = moveForm, r = cur.data.rows[f.i] || {};
+  function inp(k, lab, attrs) { return '<div><label>' + lab + '</label><input value="' + esc(f[k]) + '" oninput="moveForm[\'' + k + '\']=this.value" ' + (attrs || '') + '></div>'; }
+  document.getElementById('app').innerHTML = '<div class="card"><h3>↪ الباقي من عربية ' + esc(r.truck || (f.i + 1)) + ' لعنصر تاني</h3>' +
+    '<p class="muted">العربيات اللي بعدها هتتحسب على العنصر الجديد.</p>' +
+    '<div><label>العنصر الجديد</label><input list="els" value="' + esc(f.element) + '" oninput="moveForm.element=this.value"><datalist id="els">' +
+      elementsUsed().map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist></div>' +
+    '<div class="g2" style="margin-top:8px">' + inp('qty', 'كام م³ من العربية دي راحت له', 'inputmode="decimal"') + '<div></div>' +
+      inp('grade_strength', 'الإجهاد', 'inputmode="numeric"') + inp('cement_content', 'الأسمنت', 'inputmode="numeric"') + '</div>' +
+    '<p class="muted">الإجهاد مكتوب زي اللي قبله، غيّره لو العنصر الجديد ليه إجهاد تاني.</p></div>' +
+    '<div class="bar"><button class="btn l" style="width:32%" onclick="moveForm=null;view=\'rep\';render()">رجوع</button><button class="btn g" onclick="saveMove()">✅ سجّل</button></div>';
+}
+function saveMove() {
+  var f = moveForm, q = Number(String(f.qty).replace(',', '.')) || 0, el = String(f.element || '').trim();
+  if (!el) return toast('اكتب العنصر');
+  var gs = Number(f.grade_strength) || f.grade_strength || null, cc = Number(f.cement_content) || f.cement_content || null;
+  var changed = String(gs || '') !== String(f.old.gs || '') || String(cc || '') !== String(f.old.cc || '');
+  cur.data.events.push({ type: 'element_move', type_ar: 'نقل لعنصر تاني', element: el, qty_m3: q, grade_strength: gs, cement_content: cc,
+    from: nowHM(), to: null, after_row: f.i + 1,
+    text: 'الباقي اتنقل على ' + el + ' (' + q + ' م³)' + (changed ? ' — إجهاد ' + (gs || '؟') + (cc ? '/' + cc : '') : '') });
+  moveForm = null; touch(); view = 'rep'; render();
+}
+/* الباقي لعميل تاني: بيتسجل سطر في الصبة دي، وبيتفتح سايت شيت جديد للعميل التاني فيه العربية بالكمية الباقية */
+var leftForm = null;
+function leftoverLine(i) {
+  var r = cur.data.rows[i];
+  leftForm = { i: i, client: '', site: '', element: '', qty: '', grade_strength: cur.data.header.grade_strength || '', cement_content: cur.data.header.cement_content || '' };
+  view = 'left'; render(); window.scrollTo(0, 0);
+}
+function pickLeft(k, v) { leftForm[k] = v; if (k === 'client') { var st = S.sites[v] || []; leftForm.site = st.length === 1 ? st[0] : ''; } renderLeft(); }
+function renderLeft() {
+  var f = leftForm, r = cur.data.rows[f.i] || {};
+  function inp(k, lab, attrs) { return '<div><label>' + lab + '</label><input value="' + esc(f[k]) + '" oninput="leftForm[\'' + k + '\']=this.value" ' + (attrs || '') + '></div>'; }
+  document.getElementById('app').innerHTML = '<div class="card"><h3>↩ الباقي من عربية ' + esc(r.truck || (f.i + 1)) + ' لعميل تاني</h3>' +
+    '<p class="muted">هيتسجل سطر هنا في صبة ' + esc(cur.data.header.client) + '، وهيتفتح سايت شيت جديد للعميل التاني فيه العربية دي.</p>' +
+    clientSelects(f.client, f.site, 'pickLeft') +
+    '<div class="g2" style="margin-top:8px">' + inp('qty', 'الكمية الباقية م³', 'inputmode="decimal"') + inp('element', 'العنصر') +
+    inp('grade_strength', 'الإجهاد', 'inputmode="numeric"') + inp('cement_content', 'الأسمنت', 'inputmode="numeric"') + '</div></div>' +
+    '<div class="bar"><button class="btn l" style="width:32%" onclick="leftForm=null;view=\'rep\';render()">رجوع</button><button class="btn g" onclick="saveLeft()">✅ سجّل وافتح شيت جديد</button></div>';
+}
+function saveLeft() {
+  var f = leftForm, q = Number(String(f.qty).replace(',', '.')) || 0, r = cur.data.rows[f.i] || {}, src = cur.data.header;
+  if (!f.client) return toast('اختار العميل');
+  if (!q) return toast('اكتب الكمية الباقية');
+  var who = f.client + (f.site ? ' — ' + f.site : '');
+  cur.data.events.push({ type: 'leftover', type_ar: 'الباقي لعميل تاني', element: who, client: f.client, qty_m3: q,
+    from: nowHM(), to: null, after_row: f.i + 1, text: 'الباقي (' + q + ' م³) راح لـ ' + who + (f.element ? ' — ' + f.element : '') });
+  touch();
+  // سايت شيت جديد للعميل التاني
+  var id = uid(), now = Date.now();
+  S.reports[id] = { id: id, created: now, updatedAt: now, data: {
+    header: { date: today(), technician: S.name, pour_method: src.pour_method || 'مضخة', client: f.client, site: f.site || null, element: f.element || null,
+      grade_strength: Number(f.grade_strength) || f.grade_strength || null, cement_content: Number(f.cement_content) || f.cement_content || null },
+    rows: [{ truck: r.truck || null, driver: r.driver || null, qty_m3: q, exit: r.end || nowHM(), slump: null, additive_l: null,
+      note: 'باقي من صبة ' + (src.client || '') + (src.site ? ' — ' + src.site : '') }],
+    events: [], footer: {} } };
+  S.order.push(id); save();
+  var go = confirm('✅ اتسجل.\nتفتح السايت شيت الجديد بتاع ' + f.client + ' دلوقتي؟\n(لو لأ، هتلاقيه في الرئيسية)');
+  leftForm = null;
+  if (go) { cur = S.reports[id]; view = 'rep'; } else view = 'rep';
+  render(); window.scrollTo(0, 0); syncAll(false);
 }
 function elementsUsed() {
   var d = cur.data, set = {};
@@ -366,6 +444,7 @@ function renderReport() {
   var total = 0;
   d.rows.forEach(function (r, i) {
     if (!r.diverted && r.end) total += Number(r.qty_m3) || 0;
+    if (i === d.rows.length - 1) total -= splitPour(d).out;
     var dis = ro ? ' disabled' : '';
     var st = r.diverted ? '<span class="badge y">اتحولت</span>' : r.end ? '<span class="badge g">✓ خلصت</span>' : r.start ? '<span class="badge g">▶ بتصب</span>' : r.arrival ? '<span class="badge">⏳ ' + since(r.arrival) + ' د</span>' : '';
     // أحداث بعد العربية اللي قبلها
@@ -374,7 +453,8 @@ function renderReport() {
       '<div class="g4" style="margin-top:8px">' + timeCell(i, 'exit', 'خروج (من البون)', '🚚') + timeCell(i, 'arrival', 'وصول', '📍') + timeCell(i, 'start', 'بداية الصب', '▶️') + timeCell(i, 'end', 'نهاية الصب', '⏹') + '</div>' +
       '<div class="g4" style="margin-top:8px">' + fld('rows.' + i + '.slump', 'الهبوط' + (r.exit_slump != null ? ' (خروج ' + esc(r.exit_slump) + ')' : ''), r.slump, 'inputmode="decimal" data-n' + dis) + fld('rows.' + i + '.temp', 'الحرارة', r.temp, 'inputmode="decimal"' + dis) +
       fld('rows.' + i + '.additive_l', 'إضافة (لتر)', r.additive_l, 'inputmode="decimal" data-n' + dis) + fld('rows.' + i + '.note', 'ملاحظة', r.note, dis) + '</div>' +
-      (ro ? '' : '<button class="btn l mini" style="width:100%;margin-top:8px" onclick="moveLine(' + i + ')">↪ الباقي اتنقل لعنصر تاني (سطر تحت العربية)</button>') +
+      (ro ? '' : '<div class="g2" style="margin-top:8px"><button class="btn l mini" style="width:100%" onclick="moveLine(' + i + ')">↪ الباقي لعنصر تاني</button>' +
+        '<button class="btn l mini" style="width:100%" onclick="leftoverLine(' + i + ')">↩ الباقي لعميل تاني</button></div>') +
       '<label class="chk"><input type="checkbox" data-p="rows.' + i + '.diverted" onchange="setP(this);renderReport()"' + (r.diverted ? ' checked' : '') + dis + '> العربية دي اتحولت / متصبتش</label></div>';
     d.events.forEach(function (e, j) { if (+e.after_row === i + 1) html += evCard(e, j, ro); });
   });
@@ -394,24 +474,36 @@ function renderReport() {
   document.getElementById('app').innerHTML = html;
   renderAlerts();
 }
+/** توزيع كل عربية على العناصر.
+ *  «نقل لعنصر تاني» بعد عربية i بكمية q: آخر q م³ من العربية دي راحت للعنصر الجديد، والعربيات اللي بعدها بتصب فيه.
+ *  «الباقي لعميل تاني»: آخر q م³ من العربية راحت برة الصبة (مش بتتحسب على أي عنصر). */
+function splitPour(d) {
+  var h = d.header || {}, rows = d.rows || [], ev = d.events || [], curEl = h.element || '؟', per = [], tot = {}, out = 0;
+  rows.forEach(function (r, i) {
+    var parts = [], q = Number(r.qty_m3) || 0, mine = ev.filter(function (e) { return +e.after_row === i + 1 && (e.type === 'element_move' || e.type === 'leftover'); });
+    if (r.diverted) { per.push({ parts: [], out: 0 }); return; }
+    var leftover = 0, moved = [];
+    mine.forEach(function (e) { var m = Math.min(Number(e.qty_m3) || 0, q); if (e.type === 'leftover') leftover += m; else moved.push({ el: e.element, q: m }); });
+    var rest = q - leftover - moved.reduce(function (s, x) { return s + x.q; }, 0);
+    if (rest < 0) rest = 0;
+    parts.push({ el: curEl, q: rest });
+    moved.forEach(function (x) { parts.push({ el: x.el, q: x.q }); });
+    mine.forEach(function (e) { if (e.type === 'element_move' && e.element) curEl = e.element; });
+    if (r.end) { parts.forEach(function (p) { if (p.q) tot[p.el] = (tot[p.el] || 0) + p.q; }); out += leftover; }
+    per.push({ parts: parts, out: leftover });
+  });
+  return { per: per, totals: tot, out: out };
+}
 function byElement() {
-  var d = cur.data, t = {};
-  d.rows.forEach(function (r) {
-    if (r.diverted || !r.end) return;
-    t[d.header.element || '؟'] = (t[d.header.element || '؟'] || 0) + (Number(r.qty_m3) || 0);
-  });
-  d.events.forEach(function (e) {
-    if (e.type !== 'element_move' || !e.element) return;
-    var q = Number(e.qty_m3) || 0, main = d.header.element || '؟';
-    t[e.element] = (t[e.element] || 0) + q; t[main] = (t[main] || 0) - q;
-  });
-  var k = Object.keys(t); if (k.length < 2) return '';
-  return '<p class="muted">' + k.map(function (x) { return esc(x) + ': <b>' + t[x] + ' م³</b>'; }).join(' · ') + '</p>';
+  var sp = splitPour(cur.data), k = Object.keys(sp.totals);
+  if (k.length < 2 && !sp.out) return '';
+  return '<p class="muted">' + k.map(function (x) { return esc(x) + ': <b>' + sp.totals[x] + ' م³</b>'; }).join(' · ') +
+    (sp.out ? ' · راح لعميل تاني: <b>' + sp.out + ' م³</b>' : '') + '</p>';
 }
 function evCard(e, j, ro) {
   var dis = ro ? ' disabled' : '';
   return '<div class="card ev"><h3><span>★ ' + esc(e.type_ar) + '</span>' + (ro ? '' : '<button class="mini del" onclick="delEvent(' + j + ')">حذف</button>') + '</h3>' +
-    (e.type === 'other' || e.type === 'element_move' || e.type === 'breakdown' || e.type === 'handover' ? '' : '<div class="g2">' + '<div class="tm"><label>من</label><input type="time" value="' + esc(e.from) + '" onchange="cur.data.events[' + j + '].from=this.value;touch()"' + dis + '></div>' +
+    (e.type === 'other' || e.type === 'element_move' || e.type === 'leftover' || e.type === 'breakdown' || e.type === 'handover' ? '' : '<div class="g2">' + '<div class="tm"><label>من</label><input type="time" value="' + esc(e.from) + '" onchange="cur.data.events[' + j + '].from=this.value;touch()"' + dis + '></div>' +
       (e.to ? '<div class="tm"><label>إلى</label><input type="time" value="' + esc(e.to) + '" onchange="cur.data.events[' + j + '].to=this.value;touch()"' + dis + '></div>' :
         '<div class="tm"><label>إلى</label>' + (ro ? '' : '<button class="now" onclick="endEvent(' + j + ')">✅ خلص الآن</button>') + '</div>') + '</div>') +
     '<div style="margin-top:6px"><input value="' + esc(e.text) + '" placeholder="السبب / التفاصيل" oninput="cur.data.events[' + j + '].text=this.value;cur.data.events[' + j + '].cause=this.value;touch()"' + dis + '></div></div>';
@@ -457,13 +549,13 @@ function syncDispatch(force) {
   api({ action: 'dispatch', code: S.code, items: pend }).then(function (res) {
     syncing = false;
     if (S.disp.some(function (d) { return !d.synced && pend.indexOf(d) < 0; })) setTimeout(function () { syncDispatch(false); }, 300);
-    if (res && res.ok) { pend.forEach(function (d) { d.synced = true; }); S.dispToday = res.today || []; if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.techs) S.techs = res.techs; if (res.plantUrl) S.plantUrl = res.plantUrl; save(); if (!supForm) render(); else setNet(); }
+    if (res && res.ok) { pend.forEach(function (d) { d.synced = true; }); S.dispToday = res.today || []; if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.techs) S.techs = res.techs; if (res.plantUrl) S.plantUrl = res.plantUrl; save(); if (!supForm && view !== 'pours' && view !== 'pour') render(); else setNet(); }
     else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
   }).catch(function () { syncing = false; setNet(); });
 }
 function renderSup() {
   if (supForm) return renderSupForm();
-  var h = '<div style="padding:10px"><button class="btn g big" onclick="newDispatch()">🚚 خروج عربية جديدة</button></div>';
+  var h = '<div style="padding:10px" class="g2"><button class="btn g big" onclick="newDispatch()">🚚 خروج عربية جديدة</button><button class="btn big" onclick="showPours()">🏗 الصبات في المواقع</button></div>';
   var srv = {}; S.dispToday.forEach(function (d) { srv[d.id] = d; });
   var today = new Date().toDateString();
   var list = S.disp.filter(function (d) { return new Date(d.ts).toDateString() === today; }).slice().reverse();
@@ -476,6 +568,46 @@ function renderSup() {
   h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="syncDispatch(true);toast(\'⏳ بيحدّث…\')">🔄 تحديث</button>' +
     (S.plantUrl ? '<a class="btn l" style="text-align:center;text-decoration:none" target="_blank" href="' + esc(S.plantUrl) + '">🖨 شيت النهارده</a>' : '<span></span>') + '</div><p class="center muted"><a href="#" onclick="logout();return false">خروج</a></p>';
   document.getElementById('app').innerHTML = h;
+}
+function showPours() {
+  if (!navigator.onLine) return toast('محتاج نت');
+  toast('⏳ بيجيب الصبات…');
+  api({ action: 'pours', code: S.code }).then(function (r) {
+    if (!r.ok) return toast('❌ ' + (r.error || ''));
+    var list = r.pours || [];
+    var h = '<div class="card"><h3>🏗 الصبات (النهارده وامبارح)</h3>' + (list.length ? '' : '<p class="muted">مفيش صبات</p>') + '</div><div class="card list" style="padding:0">' +
+      list.map(function (o) {
+        var st = o.done ? '<span class="st f">✅ خلصت</span>' : '<span class="st s">🟢 شغالة</span>';
+        var al = (o.reds ? '<span class="badge">🔴 ' + o.reds + '</span> ' : '') + (o.yellows ? '<span class="badge y">🟡 ' + o.yellows + '</span>' : '');
+        return '<div class="it" onclick="viewPour(' + o.sid + ')"><div><b>' + esc(o.client) + (o.site ? ' — ' + esc(o.site) : '') + '</b> ' + al +
+          '<br><span class="muted">' + esc(o.element) + ' · ' + esc(o.owner) + ' · ' + o.trucks + ' عربية · ' + o.qty + (o.required ? ' من ' + esc(o.required) : '') + ' م³' +
+          (o.now ? '<br>🚛 ' + esc(o.now) : '') + '</span></div>' + st + '</div>';
+      }).join('') + '</div><div style="padding:10px" class="g2"><button class="btn l" onclick="showPours()">🔄 تحديث</button><button class="btn l" onclick="supForm=null;view=\'home\';render()">رجوع</button></div>';
+    view = 'pours'; document.getElementById('app').innerHTML = h; window.scrollTo(0, 0);
+  }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
+}
+function viewPour(sid) {
+  toast('⏳ …');
+  api({ action: 'pour', code: S.code, sid: sid }).then(function (r) {
+    if (!r.ok) return toast('❌ ' + (r.error || ''));
+    var d = r.data || {}, hd = d.header || {}, rows = d.rows || [], ev = d.events || [];
+    var h = '<div class="card"><h3>' + esc(hd.client) + (hd.site ? ' — ' + esc(hd.site) : '') + '</h3><div class="muted">' + esc(hd.element || '') + ' · ' +
+      esc(hd.grade_strength || '') + (hd.cement_content ? '/' + esc(hd.cement_content) : '') + ' · ' + esc(hd.date || '') + ' · الفني: ' + esc(r.owner) + '</div></div>';
+    if ((r.alerts || []).length) h += '<div class="alert y">' + r.alerts.map(esc).join('<br>') + '</div>';
+    h += '<div class="card" style="padding:6px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;text-align:center">' +
+      '<tr style="background:#eef1f4"><th>#</th><th>عربية</th><th>م³</th><th>خروج</th><th>وصول</th><th>بداية</th><th>نهاية</th><th>هبوط</th><th>إضافة</th></tr>';
+    rows.forEach(function (x, i) {
+      h += '<tr style="border-top:1px solid #ddd' + (x.diverted ? ';color:#999' : '') + '"><td>' + (i + 1) + '</td><td><b>' + esc(x.truck || '') + '</b></td><td>' + esc(x.qty_m3 || '') + '</td><td>' + esc(x.exit || '') +
+        '</td><td>' + esc(x.arrival || '') + '</td><td>' + esc(x.start || '') + '</td><td>' + esc(x.end || '') + '</td><td>' + esc(x.slump == null ? '' : x.slump) + '</td><td>' + esc(x.additive_l || '') + '</td></tr>';
+      ev.filter(function (e) { return +e.after_row === i + 1; }).forEach(function (e) {
+        h += '<tr><td colspan="9" style="text-align:right;background:#fff8d6;font-size:13px">★ ' + esc(e.type_ar || '') + ' ' + esc(e.text || '') + '</td></tr>';
+      });
+    });
+    h += '</table></div>';
+    if (r.printUrl) h += '<div style="padding:0 10px"><a class="btn l" style="display:block;text-align:center;text-decoration:none" target="_blank" href="' + esc(r.printUrl) + '">🖨 السايت شيت</a></div>';
+    h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="viewPour(' + sid + ')">🔄 تحديث</button><button class="btn l" onclick="showPours()">رجوع</button></div>';
+    view = 'pour'; document.getElementById('app').innerHTML = h; window.scrollTo(0, 0);
+  }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 function newDispatch() {
   var last = S.disp[S.disp.length - 1] || {};
