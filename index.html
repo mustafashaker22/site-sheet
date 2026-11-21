@@ -91,7 +91,20 @@ function setNet() {
   document.getElementById('net').textContent = (navigator.onLine ? '🟢 متصل' : '🔴 من غير نت') + (pend ? ' · ⏳ ' + pend : '');
 }
 function api(body) {
-  return fetch(S.api, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
+  return fetch(S.api, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); }).then(function (res) {
+    if (res && res.resetAt) purgeBefore(res.resetAt);
+    return res;
+  });
+}
+/** المدير مسح البيانات: نشيل أي حاجة اتعملت قبل كده من الموبايل */
+function purgeBefore(t) {
+  if (!t || (S.resetSeen || 0) >= t) return;
+  var n = 0;
+  S.order = S.order.filter(function (id) { var r = S.reports[id]; if (!r || (r.created || 0) < t) { delete S.reports[id]; n++; return false; } return true; });
+  S.disp = S.disp.filter(function (d) { return (d.ts || 0) >= t; }); S.dispToday = [];
+  S.resetSeen = t; save();
+  if (cur && !S.reports[cur.id]) { cur = null; view = 'home'; }
+  if (n) toast('🧹 اتمسحت الصبات القديمة'); render();
 }
 var syncing = false;
 function syncAll(force) {
@@ -114,7 +127,7 @@ function syncAll(force) {
       return;
     }
     var r = S.reports[ids[i++]], sentAt = r.updatedAt;
-    var body = { action: 'sync', code: S.code, report: { id: r.id, data: r.data, final: !!r.final } };
+    var body = { action: 'sync', code: S.code, report: { id: r.id, created: r.created || 0, data: r.data, final: !!r.final } };
     if (r.final && r.signature) body.signature = r.signature;
     api(body).then(function (res) {
       if (res && res.ok) {
@@ -192,7 +205,7 @@ function cleanup() {
 }
 function newReport() {
   var id = uid();
-  S.reports[id] = { id: id, updatedAt: Date.now(), data: { header: { date: today(), technician: S.name, pour_method: 'مضخة' }, rows: [], events: [], footer: {} } };
+  S.reports[id] = { id: id, created: Date.now(), updatedAt: Date.now(), data: { header: { date: today(), technician: S.name, pour_method: 'مضخة' }, rows: [], events: [], footer: {} } };
   S.order.push(id); save(); cur = S.reports[id]; view = 'head'; render();
 }
 function openRep(id) { cur = S.reports[id]; view = 'rep'; render(); window.scrollTo(0, 0); cur.lastPing = 0; syncAll(false); }
@@ -320,16 +333,17 @@ function delEvent(j) { if (confirm('تمسح الحدث؟')) { cur.data.events.s
 
 function renderReport() {
   var d = cur.data, h = d.header, ro = cur.final || !!cur.handedTo;
-  var html = '<div class="card" onclick="' + (ro ? '' : 'view=\'head\';render()') + '" style="cursor:pointer"><h3><span>' + esc(h.client) + '</span><span class="muted">' + (ro ? '' : '✏️ تعديل') + '</span></h3>' +
+  var html = '<div class="card" onclick="' + (ro ? '' : 'view=\'head\';render()') + '" style="cursor:pointer"><h3><span>' + esc(h.client) + (h.site ? ' — ' + esc(h.site) : '') + '</span><span class="muted">' + (ro ? '' : '✏️ تعديل') + '</span></h3>' +
     '<div class="muted">' + esc(h.element || '') + ' · ' + esc(h.grade_strength || '') + (h.cement_content ? '/' + esc(h.cement_content) : '') + ' · ' + esc(h.date) + ' · ' + esc(h.pour_method || '') + ' ' + esc(h.pump_id || '') + '</div></div>';
   html += '<datalist id="els">' + elementsUsed().map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
   html += '<div id="alerts"></div>';
   var added = {}; d.rows.forEach(function (r) { if (r.dispatch_id) added[r.dispatch_id] = 1; });
   var inc = (cur.incoming || []).filter(function (x) { return !added[x.id]; });
+  if (!ro && !inc.length) html += '<div class="muted" style="margin:6px 12px">🚚 مفيش عربيات متسجلة خارجة لـ «' + esc(h.client) + '» من المحطة لسه. <a href="#" onclick="cur.lastPing=0;syncAll(true);toast(\'⏳ بيدوّر…\');return false">🔄 دوّر تاني</a></div>';
   if (inc.length && !ro) html += '<div class="card" style="border-right:5px solid var(--b)"><h3>🚚 جاية من المحطة</h3>' + inc.map(function (x) {
     var br = x.broken || brokenLocal(x.id);
     return '<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee"><div><b>' + esc(x.truck) + '</b> · ' + esc(x.qty_m3 || '') + ' م³' +
-      (br ? ' <span class="badge">🛠 عطلانة</span>' : '') + '<br><span class="muted">خرجت ' + esc(x.exit) + ' (' + since(x.exit) + ' د)' + (x.exit_slump ? ' · هبوط ' + esc(x.exit_slump) : '') + ' · ' + esc(x.driver || '') + (br ? ' · ' + esc(br) : '') + '</span></div>' +
+      (br ? ' <span class="badge">🛠 عطلانة</span>' : '') + (x.otherSite ? ' <span class="badge y">لموقع: ' + esc(x.otherSite) + '</span>' : '') + '<br><span class="muted">خرجت ' + esc(x.exit) + ' (' + since(x.exit) + ' د)' + (x.exit_slump ? ' · هبوط ' + esc(x.exit_slump) : '') + ' · ' + esc(x.driver || '') + (br ? ' · ' + esc(br) : '') + '</span></div>' +
       '<div style="display:flex;gap:4px">' + (br ? '' : '<button class="btn l mini" onclick="broke(\'' + x.id + '\')">🛠</button>') +
       '<button class="btn g mini" onclick="arrived(\'' + x.id + '\')">📍 وصلت</button></div></div>';
   }).join('') + '</div>';
@@ -415,7 +429,7 @@ function takeOver(repId, owner) {
   api({ action: 'takeover', code: S.code, repId: repId }).then(function (r) {
     if (!r.ok) return toast('❌ ' + (r.error || ''));
     var now = Date.now();
-    S.reports[repId] = { id: repId, sid: r.sid, data: r.data, updatedAt: now, syncedAt: now, lastPing: 0 };
+    S.reports[repId] = { id: repId, created: r.created || now, sid: r.sid, data: r.data, updatedAt: now, syncedAt: now, lastPing: 0 };
     if (S.order.indexOf(repId) < 0) S.order.push(repId);
     save(); openRep(repId); toast('✅ استلمت الصبة');
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
