@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f4e78">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>سايت شيت — جودة إيجي مكس</title>
+<style>
+:root{--b:#1f4e78;--g:#1f7a3a;--r:#c0392b;--y:#e0a800;--bg:#eef1f4}
+*{box-sizing:border-box}
+body{margin:0;font-family:Tahoma,Arial,sans-serif;background:var(--bg);color:#222;font-size:15px;padding-bottom:90px}
+header{background:var(--b);color:#fff;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
+header b{font-size:17px}
+header small{opacity:.85}
+.net{font-size:12px;padding:3px 8px;border-radius:10px;background:#ffffff22}
+.card{background:#fff;margin:10px;padding:12px;border-radius:12px;box-shadow:0 1px 3px #0002}
+.card h3{margin:0 0 8px;font-size:16px;display:flex;justify-content:space-between;align-items:center;gap:6px}
+label{font-size:12px;color:#666;display:block;margin-bottom:2px}
+input,select,textarea{width:100%;font-size:16px;padding:9px 7px;border:1px solid #bbb;border-radius:8px;background:#fff;font-family:inherit}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+button{font-family:inherit;font-size:16px;border:0;border-radius:10px;padding:11px;cursor:pointer}
+.btn{background:var(--b);color:#fff;width:100%}
+.btn.g{background:var(--g)}.btn.r{background:var(--r)}.btn.l{background:#e8edf3;color:#1f4e78}
+.big{font-size:18px;padding:15px}
+.now{background:#e6f3ea;color:var(--g);font-weight:bold;width:100%;padding:12px 4px;font-size:15px}
+.tm input{text-align:center;font-weight:bold;color:var(--b)}
+.tm label{text-align:center}
+.mini{font-size:13px;padding:6px 10px;width:auto}
+.del{background:#fde2e2;color:var(--r)}
+.row{display:flex;gap:8px;align-items:center}
+.list .it{display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid #eee;cursor:pointer}
+.st{font-size:12px;padding:3px 8px;border-radius:10px;white-space:nowrap}
+.st.p{background:#fff3cd;color:#8a6d00}.st.s{background:#e3f0ff;color:#1f4e78}.st.f{background:#e6f3ea;color:var(--g)}
+.alert{margin:10px;padding:10px;border-radius:10px;font-size:14px;line-height:1.7}
+.alert.r{background:#fde2e2;border-right:5px solid var(--r)}.alert.y{background:#fff3cd;border-right:5px solid var(--y)}
+.badge{font-size:12px;padding:2px 8px;border-radius:10px;background:#fde2e2;color:var(--r);font-weight:bold}
+.badge.y{background:#fff3cd;color:#8a6d00}.badge.g{background:#e6f3ea;color:var(--g)}
+.bar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:10px;box-shadow:0 -2px 8px #0002;display:flex;gap:8px;z-index:6}
+.muted{color:#777;font-size:13px}
+.ev{border-right:4px solid var(--y)}
+.done{opacity:.75}
+#sigWrap{position:fixed;inset:0;background:#000a;display:none;z-index:20;align-items:center;justify-content:center}
+#sigBox{background:#fff;border-radius:12px;padding:12px;width:94%;max-width:520px}
+#sig{width:100%;height:200px;border:2px dashed #999;border-radius:8px;touch-action:none;background:#fff}
+.toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:10px;z-index:30;font-size:14px;display:none}
+.center{text-align:center}
+.chk{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px}.chk input{width:auto}
+</style>
+</head>
+<body>
+<header><div><b>📋 سايت شيت</b><br><small id="who"></small></div><span class="net" id="net">…</span></header>
+<div id="app"></div>
+<div id="sigWrap"><div id="sigBox">
+  <h3 style="margin:4px 0 8px">✍️ إمضاء مندوب العميل</h3>
+  <label>اسم المندوب</label><input id="repName">
+  <label style="margin-top:8px">امضي هنا بصباعك</label>
+  <canvas id="sig" width="1000" height="400"></canvas>
+  <div class="g3" style="margin-top:8px"><button class="btn l" onclick="sigClear()">مسح</button><button class="btn l" onclick="sigClose()">رجوع</button><button class="btn g" onclick="finish()">✅ إنهاء وإرسال</button></div>
+</div></div>
+<div class="toast" id="toast"></div>
+<script>
+// ===================== التخزين =====================
+var KEY = 'qc_site_app_v1';
+var S = load();
+function load() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('⚠️ الذاكرة مليانة'); } }
+S.reports = S.reports || {}; S.order = S.order || []; S.clients = S.clients || [];
+var qs = new URLSearchParams(location.search);
+if (qs.get('api')) { S.api = qs.get('api'); save(); history.replaceState(null, '', location.pathname); }
+
+var cur = null;   // التقرير المفتوح
+var view = 'home';
+var liveMsgs = {};
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function pad(n) { return (n < 10 ? '0' : '') + n; }
+function nowHM() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+function today() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function esc(v) { return v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+function toast(t) { var el = document.getElementById('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(function () { el.style.display = 'none'; }, 2500); }
+function mins(hm) { if (!hm) return null; var p = hm.split(':'); return (+p[0]) * 60 + (+p[1]); }
+function since(hm) { var m = mins(hm); if (m == null) return null; var n = mins(nowHM()); return (n - m + 1440) % 1440; }
+
+// ===================== الشبكة والمزامنة =====================
+function setNet() {
+  var pend = S.order.filter(function (id) { var r = S.reports[id]; return r && r.updatedAt > (r.syncedAt || 0); }).length;
+  document.getElementById('net').textContent = (navigator.onLine ? '🟢 متصل' : '🔴 من غير نت') + (pend ? ' · ⏳ ' + pend : '');
+}
+function api(body) {
+  return fetch(S.api, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
+}
+var syncing = false;
+function syncAll(force) {
+  setNet();
+  if (syncing || !navigator.onLine || !S.api || !S.code) return;
+  var ids = S.order.filter(function (id) {
+    var r = S.reports[id]; if (!r || r.closedSynced) return false;
+    var stale = Date.now() - (r.lastPing || 0) > 3 * 60000; // نبعت كل 3 دقايق للتنبيهات اللحظية
+    return r.updatedAt > (r.syncedAt || 0) || (force && !r.final) || (!r.final && stale);
+  });
+  if (!ids.length) return;
+  syncing = true;
+  var i = 0;
+  (function next() {
+    if (i >= ids.length) { syncing = false; save(); setNet(); if (view === 'rep' || view === 'home') render(); return; }
+    var r = S.reports[ids[i++]], sentAt = r.updatedAt;
+    var body = { action: 'sync', code: S.code, report: { id: r.id, data: r.data, final: !!r.final } };
+    if (r.final && r.signature) body.signature = r.signature;
+    api(body).then(function (res) {
+      if (res && res.ok) {
+        r.syncedAt = sentAt; r.lastPing = Date.now(); r.sid = res.sid;
+        if (r.final && res.final) { r.closedSynced = true; delete r.signature; }
+        liveMsgs[r.id] = res.live || [];
+      } else if (res && res.auth === false) { toast('❌ الكود اتوقف — كلم المدير'); }
+      else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
+      next();
+    }).catch(function () { syncing = false; setNet(); });
+  })();
+}
+window.addEventListener('online', function () { setNet(); syncAll(true); });
+window.addEventListener('offline', setNet);
+setInterval(function () { syncAll(false); if (view === 'rep') renderAlerts(); }, 60000);
+
+var tSave;
+function touch() { if (!cur) return; cur.updatedAt = Date.now(); save(); setNet(); clearTimeout(tSave); tSave = setTimeout(function () { syncAll(false); }, 2500); }
+
+// ===================== الشاشات =====================
+function render() {
+  document.getElementById('who').textContent = S.name ? 'الفني: ' + S.name : '';
+  setNet();
+  if (!S.api) return renderNoApi();
+  if (!S.code) return renderLogin();
+  if (view === 'rep' && cur) return renderReport();
+  if (view === 'head' && cur) return renderHeader();
+  renderHome();
+}
+function renderNoApi() {
+  document.getElementById('app').innerHTML = '<div class="card center"><h3 style="justify-content:center">⚠️ التطبيق مش متوصل بالسيرفر</h3><p>افتح التطبيق من <b>اللينك اللي بعته المدير</b> (مش من البحث).</p></div>';
+}
+function renderLogin() {
+  document.getElementById('app').innerHTML = '<div class="card"><h3>🔑 دخول الفني</h3><label>الكود اللي إداهولك المدير</label><input id="code" inputmode="numeric" autocomplete="off"><div style="height:10px"></div><button class="btn big" onclick="login()">دخول</button><p class="muted">أول مرة بس محتاج نت. بعد كده التطبيق بيشتغل من غير نت.</p></div>';
+}
+function login() {
+  var c = document.getElementById('code').value.trim();
+  if (!c) return;
+  if (!navigator.onLine) return toast('محتاج نت أول مرة بس');
+  toast('⏳ بيتأكد…');
+  api({ action: 'login', code: c }).then(function (r) {
+    if (!r.ok) return toast('❌ ' + (r.error || 'الكود غلط'));
+    S.code = c; S.name = r.name; S.clients = r.clients || []; save(); render();
+  }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
+}
+function renderHome() {
+  var h = '<div style="padding:10px"><button class="btn g big" onclick="newReport()">➕ صبة جديدة</button></div>';
+  var items = S.order.slice().reverse().map(function (id) {
+    var r = S.reports[id]; if (!r) return '';
+    var hd = r.data.header || {}, n = (r.data.rows || []).length;
+    var st = r.closedSynced ? '<span class="st f">✅ خلصت واتبعتت</span>' : r.final ? '<span class="st p">⏳ خلصت — مستنية نت</span>' :
+      (r.updatedAt > (r.syncedAt || 0) ? '<span class="st p">⏳ شغالة — مستنية نت</span>' : '<span class="st s">🟢 شغالة</span>');
+    return '<div class="it" onclick="openRep(\'' + id + '\')"><div><b>' + esc(hd.client || 'بدون عميل') + '</b><br><span class="muted">' + esc(hd.element || '') + ' · ' + esc(hd.date) + ' · ' + n + ' عربية</span></div>' + st + '</div>';
+  }).join('');
+  h += '<div class="card list" style="padding:0">' + (items || '<p class="center muted" style="padding:20px">مفيش صبات لسه</p>') + '</div>';
+  h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="syncAll(true);toast(\'⏳ بيبعت…\')">🔄 إرسال دلوقتي</button><button class="btn l" onclick="cleanup()">🧹 مسح القديم</button></div>';
+  h += '<p class="center muted"><a href="#" onclick="logout();return false">خروج</a></p>';
+  document.getElementById('app').innerHTML = h;
+}
+function logout() { if (confirm('خروج؟ الصبات اللي متبعتتش هتفضل محفوظة.')) { delete S.code; save(); render(); } }
+function cleanup() {
+  var n = 0;
+  S.order = S.order.filter(function (id) { var r = S.reports[id]; if (r && r.closedSynced && Date.now() - r.updatedAt > 3 * 86400000) { delete S.reports[id]; n++; return false; } return true; });
+  save(); render(); toast(n ? 'اتمسح ' + n : 'مفيش حاجة قديمة تتمسح');
+}
+function newReport() {
+  var id = uid();
+  S.reports[id] = { id: id, updatedAt: Date.now(), data: { header: { date: today(), technician: S.name, pour_method: 'مضخة' }, rows: [], events: [], footer: {} } };
+  S.order.push(id); save(); cur = S.reports[id]; view = 'head'; render();
+}
+function openRep(id) { cur = S.reports[id]; view = 'rep'; render(); window.scrollTo(0, 0); }
+function goHome() { view = 'home'; cur = null; render(); }
+
+function fld(path, lab, val, attrs) { return '<div><label>' + lab + '</label><input data-p="' + path + '" value="' + esc(val) + '" ' + (attrs || '') + ' oninput="setP(this)"></div>'; }
+function setP(el) {
+  var ps = el.getAttribute('data-p').split('.'), o = cur.data;
+  for (var i = 0; i < ps.length - 1; i++) o = o[ps[i]];
+  var k = ps[ps.length - 1], v = el.type === 'checkbox' ? el.checked : el.value;
+  if (el.getAttribute('data-n') !== null && v !== '' && typeof v === 'string') { var n = Number(v.replace(',', '.')); if (!isNaN(n)) v = n; }
+  if (v === '') v = null;
+  o[k] = v; touch();
+}
+function renderHeader() {
+  var h = cur.data.header;
+  var opts = S.clients.map(function (c) { return '<option value="' + esc(c) + '">'; }).join('');
+  document.getElementById('app').innerHTML = '<div class="card"><h3>بيانات الصبة</h3>' +
+    '<div><label>اسم العميل</label><input data-p="header.client" list="cl" value="' + esc(h.client) + '" oninput="setP(this)"><datalist id="cl">' + opts + '</datalist></div>' +
+    '<div class="g2" style="margin-top:8px">' + fld('header.site', 'عنوان الموقع', h.site) + fld('header.element', 'العنصر المصبوب', h.element) +
+    fld('header.grade_strength', 'الإجهاد', h.grade_strength, 'inputmode="numeric" data-n') + fld('header.cement_content', 'الأسمنت', h.cement_content, 'inputmode="numeric" data-n') +
+    fld('header.qty_required_m3', 'الكمية المطلوبة م³', h.qty_required_m3, 'inputmode="decimal" data-n') + fld('header.date', 'التاريخ', h.date, 'type="date"') +
+    '<div><label>طريقة الصب</label><select data-p="header.pour_method" onchange="setP(this)">' + ['مضخة', 'مزراب'].map(function (x) { return '<option' + (h.pour_method === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
+    fld('header.pump_id', 'رقم المضخة', h.pump_id) + fld('header.operator', 'المشغل', h.operator) + fld('header.site_manager', 'مسئول الموقع', h.site_manager) +
+    fld('header.distance_km', 'المسافة كم', h.distance_km, 'inputmode="decimal" data-n') + '</div></div>' +
+    '<div class="bar"><button class="btn g big" onclick="if(!cur.data.header.client){toast(\'اكتب اسم العميل\');return}view=\'rep\';render()">التالي ← العربيات</button></div>';
+}
+
+function liveLocal() {
+  var out = [], rows = cur.data.rows || [];
+  rows.forEach(function (r, i) {
+    if (r.diverted) return;
+    var w = 'عربية ' + (r.truck || (i + 1));
+    if (r.arrival && !r.start) { var m = since(r.arrival); if (m >= 30) out.push([m >= 120 ? 'r' : 'y', '⏳ ' + w + ' مستنية من ' + m + ' دقيقة']); }
+  });
+  var pouring = rows.some(function (r) { return r.start && !r.end && !r.diverted; });
+  var ends = rows.filter(function (r) { return r.end; }).map(function (r) { return r.end; });
+  if (!pouring && ends.length && !cur.final) { var last = ends[ends.length - 1], m2 = since(last); if (m2 >= 60) out.push([m2 >= 120 ? 'r' : 'y', '⏸ الصب واقف من ' + m2 + ' دقيقة' + (m2 >= 120 ? ' — احتمال فاصل صب بارد، بلّغ المهندس' : '')]); }
+  return out;
+}
+function renderAlerts() {
+  var el = document.getElementById('alerts'); if (!el || !cur) return;
+  var a = liveLocal();
+  el.innerHTML = a.map(function (x) { return '<div class="alert ' + x[0] + '">' + esc(x[1]) + '</div>'; }).join('');
+}
+function timeCell(i, k, lab, emoji) {
+  var r = cur.data.rows[i], v = r[k];
+  if (!v) return '<div class="tm"><label>' + lab + '</label><button class="now" onclick="stamp(' + i + ',\'' + k + '\')">' + emoji + ' الآن</button>' +
+    (k === 'exit' ? '<input type="time" style="margin-top:4px;font-size:14px;padding:5px" onchange="setT(' + i + ',\'' + k + '\',this.value)">' : '') + '</div>';
+  return '<div class="tm"><label>' + lab + '</label><input type="time" value="' + esc(v) + '" onchange="setT(' + i + ',\'' + k + '\',this.value)"></div>';
+}
+function stamp(i, k) { cur.data.rows[i][k] = nowHM(); touch(); renderReport(); }
+function setT(i, k, v) { cur.data.rows[i][k] = v || null; touch(); renderAlerts(); }
+function addTruck() {
+  var rows = cur.data.rows, last = rows[rows.length - 1] || {};
+  rows.push({ qty_m3: last.qty_m3 || 9, slump: null, additive_l: null });
+  touch(); renderReport();
+  setTimeout(function () { window.scrollTo(0, document.body.scrollHeight); var t = document.querySelector('[data-p="rows.' + (rows.length - 1) + '.truck"]'); if (t) t.focus(); }, 50);
+}
+function delTruck(i) { if (confirm('تمسح العربية دي؟')) { cur.data.rows.splice(i, 1); cur.data.events.forEach(function (e) { if (e.after_row > i) e.after_row--; }); touch(); renderReport(); } }
+function addEvent(type) {
+  var names = { pump_move: 'نقل المضخة', stop: 'وقفة', other: 'ملاحظة' };
+  var txt = type === 'other' ? prompt('اكتب الملاحظة:') : prompt('السبب؟ (اختياري)') ;
+  if (txt === null) return;
+  cur.data.events.push({ type: type, type_ar: names[type], from: type === 'other' ? null : nowHM(), to: null, after_row: cur.data.rows.length || null, text: txt || '', cause: txt || '' });
+  touch(); renderReport();
+}
+function endEvent(j) { cur.data.events[j].to = nowHM(); touch(); renderReport(); }
+function delEvent(j) { if (confirm('تمسح الحدث؟')) { cur.data.events.splice(j, 1); touch(); renderReport(); } }
+
+function renderReport() {
+  var d = cur.data, h = d.header, ro = cur.final;
+  var html = '<div class="card" onclick="' + (ro ? '' : 'view=\'head\';render()') + '" style="cursor:pointer"><h3><span>' + esc(h.client) + '</span><span class="muted">' + (ro ? '' : '✏️ تعديل') + '</span></h3>' +
+    '<div class="muted">' + esc(h.element || '') + ' · ' + esc(h.grade_strength || '') + (h.cement_content ? '/' + esc(h.cement_content) : '') + ' · ' + esc(h.date) + ' · ' + esc(h.pour_method || '') + ' ' + esc(h.pump_id || '') + '</div></div>';
+  html += '<div id="alerts"></div>';
+  var srv = (liveMsgs[cur.id] || []); if (srv.length && !ro) html += '<div class="alert y">📡 من السيرفر:<br>' + srv.map(esc).join('<br>') + '</div>';
+  if (ro) html += '<div class="alert y">' + (cur.closedSynced ? '✅ الصبة خلصت واتبعتت للمحطة.' : '⏳ الصبة خلصت وهتتبعت أول ما النت يرجع.') + '</div>';
+  var total = 0;
+  d.rows.forEach(function (r, i) {
+    if (!r.diverted && r.end) total += Number(r.qty_m3) || 0;
+    var dis = ro ? ' disabled' : '';
+    var st = r.diverted ? '<span class="badge y">اتحولت</span>' : r.end ? '<span class="badge g">✓ خلصت</span>' : r.start ? '<span class="badge g">▶ بتصب</span>' : r.arrival ? '<span class="badge">⏳ ' + since(r.arrival) + ' د</span>' : '';
+    // أحداث بعد العربية اللي قبلها
+    html += '<div class="card' + (r.end ? ' done' : '') + '"><h3><span>🚛 عربية ' + (i + 1) + ' ' + st + '</span>' + (ro ? '' : '<button class="mini del" onclick="delTruck(' + i + ')">حذف</button>') + '</h3>' +
+      '<div class="g3">' + fld('rows.' + i + '.truck', 'رقم العربية', r.truck, 'placeholder="T12"' + dis) + fld('rows.' + i + '.driver', 'السائق', r.driver, dis) + fld('rows.' + i + '.qty_m3', 'الكمية م³', r.qty_m3, 'inputmode="decimal" data-n' + dis) + '</div>' +
+      '<div class="g4" style="margin-top:8px">' + timeCell(i, 'exit', 'خروج (من البون)', '🚚') + timeCell(i, 'arrival', 'وصول', '📍') + timeCell(i, 'start', 'بداية الصب', '▶️') + timeCell(i, 'end', 'نهاية الصب', '⏹') + '</div>' +
+      '<div class="g4" style="margin-top:8px">' + fld('rows.' + i + '.slump', 'الهبوط', r.slump, 'inputmode="decimal" data-n' + dis) + fld('rows.' + i + '.temp', 'الحرارة', r.temp, 'inputmode="decimal"' + dis) +
+      fld('rows.' + i + '.additive_l', 'إضافة (لتر)', r.additive_l, 'inputmode="decimal" data-n' + dis) + fld('rows.' + i + '.note', 'ملاحظة', r.note, dis) + '</div>' +
+      '<label class="chk"><input type="checkbox" data-p="rows.' + i + '.diverted" onchange="setP(this);renderReport()"' + (r.diverted ? ' checked' : '') + dis + '> العربية دي اتحولت / متصبتش</label></div>';
+    d.events.forEach(function (e, j) { if (+e.after_row === i + 1) html += evCard(e, j, ro); });
+  });
+  d.events.forEach(function (e, j) { if (!e.after_row) html += evCard(e, j, ro); });
+  if (!ro) {
+    html += '<div style="padding:0 10px"><button class="btn big" onclick="addTruck()">➕ عربية جديدة وصلت</button></div>';
+    html += '<div class="g3" style="padding:10px"><button class="btn l" onclick="addEvent(\'pump_move\')">🔧 نقل مضخة</button><button class="btn l" onclick="addEvent(\'stop\')">⏸ وقفة / مشكلة</button><button class="btn l" onclick="addEvent(\'other\')">📝 ملاحظة</button></div>';
+  }
+  var f = d.footer, dis2 = ro ? ' disabled' : '';
+  html += '<div class="card"><h3>آخر الشيت</h3><div class="g2"><div><label>استخدام الهزاز</label><select data-p="footer.vibrator" onchange="setP(this)"' + dis2 + '>' +
+    [['', '—'], ['done', 'تم'], ['not_done', 'لم يتم'], ['poor', 'ليس بصورة جيدة'], ['other', 'أخرى']].map(function (o) { return '<option value="' + o[0] + '"' + ((f.vibrator || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+    fld('footer.returned_concrete', 'خرسانة راجعة', f.returned_concrete, dis2) + fld('footer.waste_estimate', 'الهالك التقديري', f.waste_estimate, dis2) + '</div>' +
+    '<div style="margin-top:8px"><label>أي مشاكل حدثت بالموقع أثناء الصب</label><textarea rows="2" data-p="footer.problems_text" oninput="setP(this)"' + dis2 + '>' + esc(f.problems_text) + '</textarea></div>' +
+    '<p class="muted">إجمالي اللي اتصب: <b>' + total + ' م³</b>' + (h.qty_required_m3 ? ' من ' + esc(h.qty_required_m3) : '') + ' · ' + d.rows.length + ' عربية</p></div>';
+  html += '<div class="bar"><button class="btn l" style="width:35%" onclick="goHome()">🏠 الرئيسية</button>' +
+    (ro ? '' : '<button class="btn g" onclick="openSig()">✍️ إمضاء العميل وإنهاء</button>') + '</div>';
+  document.getElementById('app').innerHTML = html;
+  renderAlerts();
+}
+function evCard(e, j, ro) {
+  var dis = ro ? ' disabled' : '';
+  return '<div class="card ev"><h3><span>★ ' + esc(e.type_ar) + '</span>' + (ro ? '' : '<button class="mini del" onclick="delEvent(' + j + ')">حذف</button>') + '</h3>' +
+    (e.type === 'other' ? '' : '<div class="g2">' + '<div class="tm"><label>من</label><input type="time" value="' + esc(e.from) + '" onchange="cur.data.events[' + j + '].from=this.value;touch()"' + dis + '></div>' +
+      (e.to ? '<div class="tm"><label>إلى</label><input type="time" value="' + esc(e.to) + '" onchange="cur.data.events[' + j + '].to=this.value;touch()"' + dis + '></div>' :
+        '<div class="tm"><label>إلى</label>' + (ro ? '' : '<button class="now" onclick="endEvent(' + j + ')">✅ خلص الآن</button>') + '</div>') + '</div>') +
+    '<div style="margin-top:6px"><input value="' + esc(e.text) + '" placeholder="السبب / التفاصيل" oninput="cur.data.events[' + j + '].text=this.value;cur.data.events[' + j + '].cause=this.value;touch()"' + dis + '></div></div>';
+}
+
+// ===================== الإمضاء والإنهاء =====================
+var cv, cx, drawing = false, hasInk = false;
+function openSig() {
+  var d = cur.data;
+  if (!d.rows.length) return toast('مفيش عربيات');
+  var open = d.rows.filter(function (r) { return !r.diverted && !r.end; }).length;
+  if (open && !confirm(open + ' عربية لسه ملهاش وقت نهاية. تكمّل الإنهاء؟')) return;
+  if ((d.events.length || d.rows.some(function (r) { return r.diverted; })) && !d.footer.problems_text) {
+    alert('فيه أحداث (نقل مضخة / وقفة / عربية اتحولت). اكتب المشاكل في خانة «أي مشاكل حدثت بالموقع» الأول — دي اللي بتحمينا لو حصل خلاف.');
+    return;
+  }
+  document.getElementById('sigWrap').style.display = 'flex';
+  document.getElementById('repName').value = d.client_rep || '';
+  cv = document.getElementById('sig'); cx = cv.getContext('2d'); sigClear();
+}
+function sigClose() { document.getElementById('sigWrap').style.display = 'none'; }
+function sigClear() { cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.lineWidth = 6; cx.lineCap = 'round'; cx.strokeStyle = '#0b3d91'; hasInk = false; }
+function pos(ev) { var r = cv.getBoundingClientRect(), t = ev.touches ? ev.touches[0] : ev; return [(t.clientX - r.left) * cv.width / r.width, (t.clientY - r.top) * cv.height / r.height]; }
+function sigInit() {
+  var c = document.getElementById('sig');
+  function down(e) { e.preventDefault(); drawing = true; var p = pos(e); cx.beginPath(); cx.moveTo(p[0], p[1]); }
+  function move(e) { if (!drawing) return; e.preventDefault(); var p = pos(e); cx.lineTo(p[0], p[1]); cx.stroke(); hasInk = true; }
+  function up() { drawing = false; }
+  c.addEventListener('mousedown', down); c.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+  c.addEventListener('touchstart', down, { passive: false }); c.addEventListener('touchmove', move, { passive: false }); c.addEventListener('touchend', up);
+}
+function finish() {
+  var name = document.getElementById('repName').value.trim();
+  if (!name) return toast('اكتب اسم المندوب');
+  if (!hasInk && !confirm('مفيش إمضاء. تكمّل من غير إمضاء؟')) return;
+  cur.data.client_rep = name;
+  cur.data.closed = true;
+  if (hasInk) { var small = document.createElement('canvas'); small.width = 500; small.height = 200; small.getContext('2d').drawImage(cv, 0, 0, 500, 200); cur.signature = small.toDataURL('image/png'); }
+  cur.final = true; touch(); sigClose(); renderReport(); syncAll(true);
+  toast(navigator.onLine ? '⏳ بيتبعت…' : '📴 اتحفظ — هيتبعت أول ما النت يرجع');
+}
+
+// ===================== تشغيل =====================
+sigInit();
+render();
+syncAll(true);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+</script>
+</body>
+</html>
