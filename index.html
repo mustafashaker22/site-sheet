@@ -89,7 +89,7 @@ function since(hm) { var m = mins(hm); if (m == null) return null; var n = mins(
 
 // ===================== الشبكة والمزامنة =====================
 function setNet() {
-  var pend = S.order.filter(function (id) { var r = S.reports[id]; return r && !r.closedSynced && !r.handedTo && ((r.data.rows || []).length || r.sid) && r.updatedAt > (r.syncedAt || 0); }).length + S.disp.filter(function (d) { return !d.synced; }).length;
+  var pend = S.order.filter(function (id) { var r = S.reports[id]; return r && !r.closedSynced && !r.handedTo && ((r.data.rows || []).length || r.sid) && r.updatedAt > (r.syncedAt || 0); }).length + S.disp.filter(function (d) { return !d.synced; }).length + (S.prod || []).filter(function (d) { return !d.synced; }).length;
   document.getElementById('net').textContent = (navigator.onLine ? '🟢 متصل' : '🔴 من غير نت') + (pend ? ' · ⏳ ' + pend : '');
 }
 function api(body) {
@@ -103,7 +103,7 @@ function purgeBefore(t) {
   if (!t || (S.resetSeen || 0) >= t) return;
   var n = 0;
   S.order = S.order.filter(function (id) { var r = S.reports[id]; if (!r || (r.created || 0) < t) { delete S.reports[id]; n++; return false; } return true; });
-  S.disp = S.disp.filter(function (d) { return (d.ts || 0) >= t; }); S.dispToday = [];
+  S.disp = S.disp.filter(function (d) { return (d.ts || 0) >= t; }); S.dispToday = []; S.prod = (S.prod || []).filter(function (d) { return (d.ts || 0) >= t; }); S.prodToday = []; S.siloQ = (S.siloQ || []).filter(function (d) { return (d.ts || 0) >= t; }); S.siloSt = [];
   S.resetSeen = t; save();
   if (cur && !S.reports[cur.id]) { cur = null; view = 'home'; }
   if (n) toast('🧹 اتمسحت الصبات القديمة'); render();
@@ -112,7 +112,7 @@ var syncing = false;
 function syncAll(force) {
   setNet();
   if (syncing || !navigator.onLine || !S.api || !S.code) return;
-  if (S.role === 'sup') return syncDispatch(force);
+  if (S.role === 'sup') { if ((S.prod || []).some(function (d) { return !d.synced; }) || force) syncProd(false); if ((S.siloQ || []).some(function (d) { return !d.synced; })) syncSilo(false); return syncDispatch(force); }
   var ids = S.order.filter(function (id) {
     var r = S.reports[id]; if (!r || r.closedSynced || r.handedTo) return false;
     if (!r.sid && !(r.data.rows || []).length && !(r.data.events || []).length && !r.final) return false;
@@ -169,7 +169,7 @@ function render() {
   setNet();
   if (!S.api) return renderNoApi();
   if (!S.code) return renderLogin();
-  if (S.role === 'sup') { if (view === 'pours' || view === 'pour') view = 'home'; return renderSup(); }
+  if (S.role === 'sup') { if (view === 'prod') return renderProd(); if (view === 'silo') return renderSilo(); if (view === 'pours' || view === 'pour') view = 'home'; return renderSup(); }
   if (view === 'rep' && cur) return renderReport();
   if (view === 'head' && cur) return renderHeader();
   if (view === 'left' && cur && leftForm) return renderLeft();
@@ -189,7 +189,7 @@ function login() {
   toast('⏳ بيتأكد…');
   api({ action: 'login', code: c }).then(function (r) {
     if (!r.ok) return toast('❌ ' + (r.error || 'الكود غلط'));
-    S.code = c; S.name = r.name; S.role = r.role || 'tech'; S.clients = r.clients || []; S.sites = r.sites || {}; save(); render(); syncAll(true); restoreMine(true);
+    S.code = c; S.name = r.name; S.role = r.role || 'tech'; S.clients = r.clients || []; S.sites = r.sites || {}; if (r.silos) S.siloSt = r.silos; if (r.mixes) S.mixes = r.mixes; if (r.siloWarn) S.siloWarn = r.siloWarn; save(); render(); syncAll(true); restoreMine(true);
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 function renderHome() {
@@ -211,7 +211,7 @@ function renderHome() {
 function refreshLists() {
   if (!navigator.onLine) return toast('مفيش نت');
   toast('⏳ بيحدّث…');
-  api({ action: 'login', code: S.code }).then(function (r) { if (r.ok) { S.clients = r.clients || []; S.sites = r.sites || {}; save(); toast('✅ القوايم اتحدثت'); } }).catch(function () {});
+  api({ action: 'login', code: S.code }).then(function (r) { if (r.ok) { S.clients = r.clients || []; S.sites = r.sites || {}; if (r.silos) S.siloSt = r.silos; if (r.mixes) S.mixes = r.mixes; save(); toast('✅ القوايم اتحدثت'); } }).catch(function () {});
   syncAll(true); restoreMine(false);
 }
 /** الفني دخل من موبايل تاني: نرجّعله صباته الشغالة من السيرفر */
@@ -581,6 +581,197 @@ function takeOver(repId, owner) {
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 
+// ===================== المشرف: سجل مراقبة الإنتاج =====================
+var prodForm = null;
+function syncProd(force) {
+  var pend = (S.prod || []).filter(function (d) { return !d.synced; });
+  if (!pend.length && !force) return;
+  api({ action: 'prod', code: S.code, items: pend }).then(function (res) {
+    if (res && res.ok) {
+      pend.forEach(function (d) { d.synced = true; });
+      S.prodToday = res.today || []; if (res.silos) S.siloSt = res.silos; S.silos = S.silos || {}; S.prodToday.forEach(function (o) { if (!+o.adj && o.silo && o.cement_type) S.silos[String(o.silo).trim()] = { cement_type: o.cement_type, source: o.source || '' }; }); S.mixes = res.mixes || S.mixes || []; if (res.prodUrl) S.prodUrl = res.prodUrl;
+      if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.techs) S.techs = res.techs;
+      save(); if (view === 'prod' && !prodForm) renderProd(); else setNet();
+    } else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
+  }).catch(function () { setNet(); });
+}
+function openProd() { view = 'prod'; prodForm = null; render(); syncProd(true); }
+function renderProd() {
+  if (prodForm) return renderProdForm();
+  var td = today(), local = (S.prod || []).filter(function (o) { return o.date === td; });
+  var srv = {}; (S.prodToday || []).forEach(function (o) { srv[o.id] = o; });
+  var all = local.slice(); (S.prodToday || []).forEach(function (o) { if (!local.some(function (x) { return x.id === o.id; })) all.push(o); });
+  var mains = all.filter(function (o) { return !+o.adj; });
+  var h = '<div style="padding:10px"><button class="btn g big" onclick="newProd()">➕ خلطة لعميل</button></div>';
+  h += '<div class="card list" style="padding:0">' + (mains.map(function (m) {
+    var adjs = all.filter(function (o) { return o.parent === m.id; }).sort(function (a, b) { return a.adj - b.adj; });
+    var pend = !m.synced && !srv[m.id] ? ' <span class="st p">⏳</span>' : '';
+    return '<div style="padding:12px;border-bottom:1px solid #eee"><div class="row" style="justify-content:space-between"><div><b>' + esc(m.client) + '</b>' + (m.site ? ' — ' + esc(m.site) : '') + pend +
+      '<br><span class="muted">' + esc(m.mix || '') + ' · مية ' + esc(m.water) + ' · ' + esc(m.admix_type || '') + ' ' + esc(m.admix || '') + ' · ' + esc(m.time || '') + '</span>' +
+      adjs.map(function (a) { return '<br><span class="muted">↳ تعديل ' + a.adj + ' (' + esc(a.time || '') + '): مية ' + esc(a.water) + ' · إضافة ' + esc(a.admix) + (a.note ? ' · ' + esc(a.note) : '') + '</span>'; }).join('') +
+      '</div>' + (adjs.length < 3 ? '<button class="btn l mini" onclick="newAdj(\'' + m.id + '\')">✏️ تعديل</button>' : '') + '</div></div>';
+  }).join('') || '<p class="center muted" style="padding:20px">مفيش خلطات اتسجلت النهارده</p>') + '</div>';
+  h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="view=\'home\';render()">رجوع</button>' +
+    (S.prodUrl ? '<a class="btn l" style="text-align:center;text-decoration:none" target="_blank" href="' + esc(S.prodUrl) + '">🖨 سجل النهارده</a>' : '<span></span>') + '</div>';
+  document.getElementById('app').innerHTML = h;
+}
+function mixBy(code) { return (S.mixes || []).filter(function (m) { return m.code === code; })[0]; }
+function newProd() {
+  var last = (S.prod || [])[S.prod ? S.prod.length - 1 : 0] || {};
+  var sm = (S.silos || {})[last.silo] || {};
+  prodForm = { id: uid(), ts: Date.now(), date: today(), time: nowHM(), adj: 0, client: '', site: '', mix: '', cement_type: sm.cement_type || last.cement_type || '', silo: last.silo || '', source: sm.source || last.source || '', s_station: '', s_site: '', note: '' };
+  renderProd();
+}
+function newAdj(pid) {
+  var all = (S.prod || []).concat(S.prodToday || []), m = all.filter(function (o) { return o.id === pid; })[0]; if (!m) return;
+  var adjs = all.filter(function (o) { return o.parent === pid; }), prev = adjs.sort(function (a, b) { return b.adj - a.adj; })[0] || m, n = 1;
+  adjs.forEach(function (a) { if (+a.adj >= n) n = +a.adj + 1; });
+  prodForm = JSON.parse(JSON.stringify(m)); delete prodForm.synced; delete prodForm.row;
+  prodForm.id = uid(); prodForm.ts = Date.now(); prodForm.time = nowHM(); prodForm.adj = n; prodForm.parent = pid;
+  prodForm.water = prev.water; prodForm.admix = prev.admix; prodForm.note = ''; prodForm.s_station = ''; prodForm.s_site = '';
+  renderProd();
+}
+function pickProd(k, v) {
+  prodForm[k] = v;
+  if (k === 'mix') { var m = mixBy(v); if (m) { ['grade', 'cement', 'sand', 'agg1', 'agg2', 'water', 'admix_type', 'admix'].forEach(function (x) { prodForm[x] = m[x]; }); if (!prodForm.cement_type) prodForm.cement_type = m.cement_type; } }
+  if (k === 'silo') { var lc = siloLocal(String(v).trim()), cl = lc && lc.layers[0], sm = cl && (cl.type || cl.source) ? { cement_type: cl.type, source: cl.source } : (S.silos || {})[String(v).trim()]; if (sm) { prodForm.cement_type = sm.cement_type || ''; prodForm.source = sm.source || ''; } else { prodForm.cement_type = ''; prodForm.source = ''; } }
+  renderProdForm();
+}
+function renderProdForm() {
+  var f = prodForm, isAdj = +f.adj > 0, m = mixBy(f.mix) || {};
+  function inp(k, lab, attrs, hi) { return '<div><label>' + lab + '</label><input value="' + esc(f[k] == null ? '' : f[k]) + '" oninput="prodForm[\'' + k + '\']=this.value"' + (hi ? ' style="background:#fff8d6;border:2px solid #e0a800"' : '') + ' ' + (attrs || '') + '></div>'; }
+  var h = '<div class="card"><h3>' + (isAdj ? '✏️ تعديل ' + f.adj + ' — ' + esc(f.client) : '🧪 خلطة لعميل') + '</h3>';
+  if (!isAdj) {
+    h += clientSelects(f.client, f.site, 'pickProd');
+    h += '<div style="margin-top:8px"><label>الخلطة</label><select onchange="pickProd(\'mix\',this.value)"><option value="">— اختار الخلطة —</option>' +
+      (S.mixes || []).map(function (x) { return '<option' + (x.code === f.mix ? ' selected' : '') + '>' + esc(x.code) + '</option>'; }).join('') + '</select>' +
+      ((S.mixes || []).length ? '' : '<div class="muted">مفيش خلطات — المدير يضيفها في شيت «الخلطات»</div>') + '</div>';
+    if (f.mix) h += '<p class="muted">أسمنت ' + esc(f.cement) + ' · رمل ' + esc(f.sand) + ' · سن1 ' + esc(f.agg1) + ' · سن2 ' + esc(f.agg2) + ' (ثابتة من الخلطة)</p>';
+    var sk = Object.keys(S.silos || {}).sort();
+    h += '<div class="g3"><div><label>الخزان (السايلو)</label><input list="silos" value="' + esc(f.silo || '') + '" onchange="pickProd(\'silo\',this.value)"><datalist id="silos">' + sk.map(function (k) { return '<option value="' + esc(k) + '">' + esc(S.silos[k].cement_type || '') + '</option>'; }).join('') + '</datalist></div>' +
+      inp('cement_type', 'نوع الأسمنت') + inp('source', 'المصدر') + '</div>' +
+      '<p class="muted" style="margin:4px 0 0">نوع الأسمنت والمصدر بيتملوا لوحدهم من رصيد السايلو (اللي دخل الأول بيتصرف الأول).</p>';
+  } else h += '<p class="muted">الخلطة ' + esc(f.mix) + ' — غيّر المية أو الإضافة بس</p>';
+  h += '<div class="g2" style="margin-top:8px">' + inp('water', 'المياه لتر/م³' + (m.water ? ' (الخلطة ' + esc(m.water) + ')' : ''), 'inputmode="decimal"', 1) +
+    inp('admix', 'الإضافة كجم/م³' + (m.admix ? ' (الخلطة ' + esc(m.admix) + ')' : ''), 'inputmode="decimal"', 1) + '</div>';
+  if (!isAdj) h += '<div class="g3" style="margin-top:8px">' + inp('admix_type', 'نوع الإضافة') + inp('s_station', 'عينات محطة', 'inputmode="numeric"') + inp('s_site', 'عينات موقع', 'inputmode="numeric"') + '</div>' +
+    '<div style="margin-top:8px"><label>فني الموقع</label><input list="techs" value="' + esc(f.site_tech || '') + '" oninput="prodForm.site_tech=this.value"><datalist id="techs">' + (S.techs || []).map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist></div>';
+  h += '<div style="margin-top:8px">' + inp('note', isAdj ? 'سبب التعديل' : 'ملاحظات') + '</div></div>';
+  h += '<div class="bar"><button class="btn l" style="width:32%" onclick="prodForm=null;renderProd()">رجوع</button><button class="btn g" onclick="saveProdForm()">✅ حفظ</button></div>';
+  document.getElementById('app').innerHTML = h;
+}
+function saveProdForm() {
+  var f = prodForm;
+  if (!f.client) return toast('اختار العميل');
+  if (!f.mix) return toast('اختار الخلطة');
+  if (!+f.adj && !String(f.cement_type || '').trim()) return toast('اكتب نوع الأسمنت');
+  if (!+f.adj && f.silo) { S.silos = S.silos || {}; S.silos[String(f.silo).trim()] = { cement_type: f.cement_type, source: f.source }; }
+  ['water', 'admix', 'grade', 'cement', 'sand', 'agg1', 'agg2', 's_station', 's_site'].forEach(function (k) { if (f[k] !== '' && f[k] != null && !isNaN(Number(f[k]))) f[k] = Number(f[k]); });
+  f.synced = false; S.prod = S.prod || [];
+  S.prod.push(f); S.prod = S.prod.filter(function (d) { return Date.now() - d.ts < 3 * 86400000 || !d.synced; });
+  save(); prodForm = null; renderProd(); syncProd(false);
+  toast(navigator.onLine ? '✅ اتحفظ' : '📴 اتحفظ — هيتبعت أول ما النت يرجع');
+}
+
+
+// ===================== السايلوهات =====================
+var siloForm = null, siloMoves = [];
+function kgOf(grade) { var m = mixBy(String(grade || '').trim()); if (m && +m.cement) return +m.cement; var p = String(grade || '').split('/'), n = +p[p.length - 1]; return n >= 150 && n <= 700 ? n : 400; }
+/** رصيد السايلو من السيرفر ناقص العربيات اللي لسه متبعتتش */
+function siloLocal(n) {
+  var st = (S.siloSt || []).filter(function (x) { return String(x.silo) === String(n); })[0]; if (!st) return null;
+  st = JSON.parse(JSON.stringify(st));
+  S.disp.filter(function (d) { return !d.synced && !d.cancelled && String(d.silo || '') === String(n); }).forEach(function (d) {
+    var t = (+d.qty_m3 || 0) * kgOf(d.grade) / 1000;
+    while (t > 1e-9 && st.layers.length) { var l = st.layers[0], x = Math.min(l.tons, t); l.tons -= x; t -= x; if (l.tons <= 1e-6) st.layers.shift(); }
+  });
+  st.layers.forEach(function (l) { l.tons = Math.round(l.tons * 10) / 10; l.m3 = Math.floor(l.tons * 1000 / (st.kg || 400)); });
+  st.total = Math.round(st.layers.reduce(function (a, l) { return a + l.tons; }, 0) * 10) / 10;
+  var c = st.layers[0], nx = st.layers[1]; st.change = !!(c && nx && (c.type !== nx.type || c.source !== nx.source));
+  return st;
+}
+function lname(l) { return esc((l.source || '') + (l.type ? ' ' + l.type : '')) || '؟'; }
+function siloLine(st) {
+  var c = st.layers[0], nx = st.layers[1], warn = +S.siloWarn || 5;
+  if (!c) return '<b>سايلو ' + esc(st.silo) + ':</b> <span style="color:#c0392b">فاضي / مفيش رصيد متسجل</span>';
+  var hot = st.change && c.tons <= warn;
+  return '<div style="' + (hot ? 'background:#fdecea;border-right:5px solid #c0392b;padding:6px' : '') + '"><b>سايلو ' + esc(st.silo) + ':</b> ' + lname(c) + ' — باقي ' + c.tons + ' طن (~' + c.m3 + ' م³)' +
+    (nx ? '<br><span class="muted">بعده: ' + st.layers.slice(1).map(function (l) { return lname(l) + ' ' + l.tons + ' طن'; }).join(' ← ') + '</span>' : '') +
+    (hot ? '<br><b style="color:#c0392b">⚠️ النوع هيتغير بعد حوالي ' + c.m3 + ' م³ — بلّغ الفني</b>' : '') + '</div>';
+}
+function siloCards(compact) {
+  var L = (S.siloSt || []).map(function (x) { return siloLocal(x.silo); }).filter(Boolean);
+  if (!L.length) return compact ? '' : '<p class="center muted" style="padding:16px">مفيش سايلوهات متسجلة — سجّل استلام أو جرد</p>';
+  return '<div class="card" style="padding:8px 12px">' + L.map(siloLine).join('<hr style="border:0;border-top:1px solid #eee;margin:6px 0">') + '</div>';
+}
+function dispSiloNote(f) {
+  if (!f.silo) return '<p class="muted" style="margin:4px 0">اكتب رقم السايلو عشان التطبيق يحسب الأسمنت.</p>';
+  var st = siloLocal(f.silo); if (!st) return '<p class="muted" style="margin:4px 0">سايلو ' + esc(f.silo) + ' مفيهوش رصيد متسجل.</p>';
+  var editing = S.disp.some(function (x) { return x.id === f.id && !x.synced; });
+  var need = editing ? 0 : (+f.qty_m3 || 0) * kgOf(f.grade) / 1000, c = st.layers[0];
+  if (!c) return '<p style="color:#c0392b;margin:4px 0">⚠️ سايلو ' + esc(f.silo) + ' رصيده خلص حسب الحساب — اعمل جرد.</p>';
+  if (st.change && need > c.tons + 0.05) return '<p style="background:#fdecea;padding:6px;margin:4px 0"><b>🔄 العربية دي هتبقى خليط:</b> ' + c.tons + ' طن ' + lname(c) + ' + ' + Math.round((need - c.tons) * 10) / 10 + ' طن ' + lname(st.layers[1]) + '. بلّغ فني الموقع إن الأسمنت اتغير.</p>';
+  return '<p class="muted" style="margin:4px 0">الأسمنت: ' + lname(c) + ' — باقي بعد العربية دي ~' + Math.max(0, Math.round((c.tons - need) * 10) / 10) + ' طن' + (st.change ? ' وبعدها ' + lname(st.layers[1]) : '') + '</p>';
+}
+function openSilo() { view = 'silo'; siloForm = null; render(); syncSilo(true); }
+function syncSilo(force) {
+  var pend = (S.siloQ || []).filter(function (d) { return !d.synced; });
+  if (!pend.length && !force) return;
+  if (!navigator.onLine) return;
+  api({ action: 'silo', code: S.code, items: pend }).then(function (r) {
+    if (!r || !r.ok) return toast('⚠️ ' + ((r && r.error) || 'مشكلة'));
+    pend.forEach(function (d) { d.synced = true; }); S.siloQ = (S.siloQ || []).filter(function (d) { return !d.synced; });
+    S.siloSt = r.silos || []; siloMoves = r.moves || []; if (r.siloWarn) S.siloWarn = r.siloWarn; save();
+    if (view === 'silo' && !siloForm) renderSilo(); else if (view === 'home') render();
+  }).catch(function () { setNet(); });
+}
+function renderSilo() {
+  if (siloForm) return renderSiloForm();
+  var pend = (S.siloQ || []).filter(function (d) { return !d.synced; });
+  var h = '<div style="padding:10px" class="g2"><button class="btn g big" onclick="newSilo(\'استلام\')">🚛 استلام أسمنت</button><button class="btn big" onclick="newSilo(\'جرد\')">📏 جرد / تصحيح</button></div>' +
+    siloCards(false) + (pend.length ? '<p class="center muted">⏳ ' + pend.length + ' حركة مستنية نت</p>' : '') +
+    '<div class="card"><h3>آخر الحركات</h3>' + (siloMoves.length ? siloMoves.map(function (m) {
+      return '<div style="border-bottom:1px solid #eee;padding:6px 0">' + (m.kind === 'جرد' ? '📏 جرد' : '🚛 استلام') + ' — سايلو ' + esc(m.silo) + ': <b>' + m.tons + ' طن</b> ' + esc((m.source || '') + ' ' + (m.type || '')) +
+        '<br><span class="muted">' + esc(m.date + ' ' + m.time) + ' · ' + esc(m.by) + (m.bill ? ' · بوليصة ' + esc(m.bill) : '') + (m.note ? ' · ' + esc(m.note) : '') + '</span></div>';
+    }).join('') : '<p class="muted">' + (navigator.onLine ? '…' : 'محتاج نت') + '</p>') + '</div>' +
+    '<p class="muted" style="padding:0 14px">الحساب: كل عربية بتخصم (الكمية × أسمنت الرتبة) من السايلو اللي اتكتب في خروجها، واللي دخل الأول بيتصرف الأول. ده تقدير — اعمل جرد كل فترة (أو لما السايلو يفضى) عشان يتظبط.</p>' +
+    '<div style="padding:10px"><button class="btn l" style="width:100%" onclick="view=\'home\';render()">رجوع</button></div>';
+  document.getElementById('app').innerHTML = h;
+}
+function newSilo(kind) {
+  var st = (S.siloSt || [])[0];
+  siloForm = { id: uid(), ts: Date.now(), kind: kind, date: today(), time: nowHM(), silo: st ? st.silo : '', type: '', source: '', tons: '', bill: '', note: '' };
+  renderSilo();
+}
+function renderSiloForm() {
+  var f = siloForm, jard = f.kind === 'جرد';
+  function inp(k, lab, attrs) { return '<div><label>' + lab + '</label><input value="' + esc(f[k] == null ? '' : f[k]) + '" oninput="siloForm[\'' + k + '\']=this.value" ' + (attrs || '') + '></div>'; }
+  var types = {}, srcs = {}; (S.siloSt || []).forEach(function (s) { s.layers.forEach(function (l) { if (l.type) types[l.type] = 1; if (l.source) srcs[l.source] = 1; }); });
+  var h = '<div class="card"><h3>' + (jard ? '📏 جرد / تصحيح رصيد' : '🚛 استلام أسمنت') + '</h3>' +
+    (jard ? '<p class="muted">اكتب الموجود فعلاً في السايلو بالطن (من المقياس أو بعد ما يفضى = 0). التطبيق بيظبط الحساب على الرقم ده.</p>' : '') +
+    '<div class="g2"><div><label>السايلو</label><input list="silosF" value="' + esc(f.silo) + '" oninput="siloForm.silo=this.value.trim()"><datalist id="silosF">' + (S.siloSt || []).map(function (x) { return '<option value="' + esc(x.silo) + '">'; }).join('') + '</datalist></div>' +
+    inp('tons', jard ? 'الموجود فعلاً (طن)' : 'الكمية (طن)', 'inputmode="decimal"') +
+    '<div><label>المصنع</label><input list="srcs" value="' + esc(f.source) + '" oninput="siloForm.source=this.value" placeholder="سينا / العريش"><datalist id="srcs">' + Object.keys(srcs).map(function (k) { return '<option value="' + esc(k) + '">'; }).join('') + '</datalist></div>' +
+    '<div><label>نوع الأسمنت</label><input list="ctypes" value="' + esc(f.type) + '" oninput="siloForm.type=this.value" placeholder="OPC / SRC"><datalist id="ctypes">' + Object.keys(types).concat(['OPC', 'SRC']).filter(function (v, i, a) { return a.indexOf(v) === i; }).map(function (k) { return '<option value="' + esc(k) + '">'; }).join('') + '</datalist></div>' +
+    '<div><label>التاريخ</label><input type="date" value="' + esc(f.date) + '" onchange="siloForm.date=this.value"></div><div><label>الوقت (وقت التفريغ في السايلو)</label><input type="time" value="' + esc(f.time) + '" onchange="siloForm.time=this.value"></div>' +
+    (jard ? '' : inp('bill', 'رقم البوليصة / الكارتة', 'inputmode="numeric"')) + '</div>' + inp('note', 'ملاحظات') + '</div>' +
+    '<div class="bar"><button class="btn l" style="width:32%" onclick="siloForm=null;renderSilo()">رجوع</button><button class="btn g" onclick="saveSiloForm()">✅ حفظ</button></div>';
+  document.getElementById('app').innerHTML = h;
+}
+function saveSiloForm() {
+  var f = siloForm, t = Number(String(f.tons).replace(',', '.'));
+  if (!f.silo) return toast('اكتب رقم السايلو');
+  if (isNaN(t) || String(f.tons).trim() === '' || t < 0) return toast('اكتب الكمية بالطن');
+  if (f.kind === 'استلام' && (!t || !f.source)) return toast('اكتب الكمية والمصنع');
+  f.tons = t; S.siloQ = S.siloQ || []; S.siloQ.push(f);
+  // تحديث محلي سريع لحد ما السيرفر يرد
+  var st = (S.siloSt = S.siloSt || []).filter(function (x) { return String(x.silo) === String(f.silo); })[0];
+  if (!st) { st = { silo: f.silo, kg: 400, layers: [] }; S.siloSt.push(st); }
+  if (f.kind === 'استلام') { var l = st.layers[st.layers.length - 1]; if (l && l.type === f.type && l.source === f.source) l.tons += t; else st.layers.push({ type: f.type, source: f.source, tons: t }); }
+  save(); siloForm = null; renderSilo(); syncSilo(false);
+  toast(navigator.onLine ? '✅ اتحفظ' : '📴 اتحفظ — هيتبعت أول ما النت يرجع');
+}
+
 // ===================== المشرف: خروج العربيات =====================
 var supForm = null;
 function syncDispatch(force) {
@@ -590,13 +781,14 @@ function syncDispatch(force) {
   api({ action: 'dispatch', code: S.code, items: pend }).then(function (res) {
     syncing = false;
     if (S.disp.some(function (d) { return !d.synced && pend.indexOf(d) < 0; })) setTimeout(function () { syncDispatch(false); }, 300);
-    if (res && res.ok) { pend.forEach(function (d) { d.synced = true; }); S.dispToday = res.today || []; if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.techs) S.techs = res.techs; if (res.plantUrl) S.plantUrl = res.plantUrl; save(); if (!supForm && view !== 'pours' && view !== 'pour') render(); else setNet(); }
+    if (res && res.ok) { pend.forEach(function (d) { d.synced = true; }); S.dispToday = res.today || []; if (res.silos) S.siloSt = res.silos; if (res.siloWarn) S.siloWarn = res.siloWarn; if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.techs) S.techs = res.techs; if (res.plantUrl) S.plantUrl = res.plantUrl; save(); if (!supForm && view !== 'pours' && view !== 'pour') render(); else setNet(); }
     else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
   }).catch(function () { syncing = false; setNet(); });
 }
 function renderSup() {
   if (supForm) return renderSupForm();
-  var h = '<div style="padding:10px" class="g2"><button class="btn g big" onclick="newDispatch()">🚚 خروج عربية جديدة</button><button class="btn big" onclick="showPours()">🏗 الصبات في المواقع</button></div>';
+  var h = '<div style="padding:10px" class="g2"><button class="btn g big" onclick="newDispatch()">🚚 خروج عربية جديدة</button><button class="btn big" onclick="showPours()">🏗 الصبات في المواقع</button></div>' +
+    '<div style="padding:0 10px" class="g2"><button class="btn l" onclick="openProd()">🧪 الخلطات (QC-F-25)</button><button class="btn l" onclick="openSilo()">🏭 السايلوهات</button></div>' + siloCards(true);
   var srv = {}; S.dispToday.forEach(function (d) { srv[d.id] = d; });
   var today = new Date().toDateString();
   var list = S.disp.filter(function (d) { return new Date(d.ts).toDateString() === today; }).slice().reverse();
@@ -652,7 +844,7 @@ function viewPour(sid) {
 }
 function newDispatch() {
   var last = S.disp[S.disp.length - 1] || {};
-  supForm = { id: uid(), ts: Date.now(), date: today(), exit: nowHM(), client: last.client || '', site: last.site || '', grade: last.grade || '', qty_m3: last.qty_m3 || 9, truck: '', driver: '', ticket: '', exit_slump: '', temp: '', samples: '', site_tech: last.site_tech || '', sup_note: '' };
+  supForm = { id: uid(), ts: Date.now(), date: today(), exit: nowHM(), client: last.client || '', site: last.site || '', silo: last.silo || '', grade: last.grade || '', qty_m3: last.qty_m3 || 9, truck: '', driver: '', ticket: '', exit_slump: '', temp: '', samples: '', site_tech: last.site_tech || '', sup_note: '' };
   render();
 }
 function editDispatch(id) { var d = S.disp.filter(function (x) { return x.id === id; })[0]; if (d) { supForm = JSON.parse(JSON.stringify(d)); render(); } }
@@ -668,7 +860,9 @@ function renderSupForm() {
     inp('temp', 'الحرارة', 'inputmode="decimal"') + inp('samples', 'عدد العينات', 'inputmode="numeric"') +
     '<div><label>فني الموقع</label><input list="techs" value="' + esc(f.site_tech) + '" oninput="sf(\'site_tech\',this.value)"><datalist id="techs">' + (S.techs || []).map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist></div>' +
     '<div><label>وقت الخروج</label><input type="time" value="' + esc(f.exit) + '" onchange="sf(\'exit\',this.value)"></div>' +
-    inp('grade', 'الرتبة', 'placeholder="300/400"') + inp('ticket', 'رقم البون', 'inputmode="numeric"') + '</div>' +
+    inp('grade', 'الرتبة', 'placeholder="300/400"') + inp('ticket', 'رقم البون', 'inputmode="numeric"') +
+    '<div><label>السايلو</label><input list="silosD" value="' + esc(f.silo || '') + '" onchange="sf(\'silo\',this.value.trim());renderSupForm()"><datalist id="silosD">' + (S.siloSt || []).map(function (x) { return '<option value="' + esc(x.silo) + '">'; }).join('') + '</datalist></div><div></div></div>' +
+    dispSiloNote(f) +
     inp('sup_note', 'ملاحظات') + (isEdit ? '<p class="center"><a href="#" style="color:#c0392b" onclick="cancelDispatch();return false">إلغاء العربية دي (اتسجلت بالغلط)</a></p>' : '') + '</div>' +
     '<div class="bar"><button class="btn l" style="width:30%" onclick="supForm=null;render()">رجوع</button>' +
     (isEdit ? '<button class="btn l" style="width:30%" onclick="markBroken()">🛠 عطلت</button>' : '') +
