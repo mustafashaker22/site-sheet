@@ -98,7 +98,7 @@ function syncAll(force) {
   if (syncing || !navigator.onLine || !S.api || !S.code) return;
   if (S.role === 'sup') return syncDispatch(force);
   var ids = S.order.filter(function (id) {
-    var r = S.reports[id]; if (!r || r.closedSynced) return false;
+    var r = S.reports[id]; if (!r || r.closedSynced || r.handedTo) return false;
     var stale = Date.now() - (r.lastPing || 0) > 3 * 60000; // نبعت كل 3 دقايق للتنبيهات اللحظية
     return r.updatedAt > (r.syncedAt || 0) || (force && !r.final) || (!r.final && stale);
   });
@@ -108,7 +108,7 @@ function syncAll(force) {
   (function next() {
     if (i >= ids.length) {
       syncing = false; save(); setNet(); if (view === 'rep' || view === 'home') render();
-      var more = S.order.some(function (id) { var x = S.reports[id]; return x && !x.closedSynced && x.updatedAt > (x.syncedAt || 0); });
+      var more = S.order.some(function (id) { var x = S.reports[id]; return x && !x.closedSynced && !x.handedTo && x.updatedAt > (x.syncedAt || 0); });
       if (more) setTimeout(function () { syncAll(false); }, 300);
       return;
     }
@@ -121,7 +121,8 @@ function syncAll(force) {
         if (r.final && res.final) { r.closedSynced = true; delete r.signature; }
         liveMsgs[r.id] = res.live || [];
         r.incoming = res.incoming || [];
-      } else if (res && res.auth === false) { toast('❌ الكود اتوقف — كلم المدير'); }
+      } else if (res && res.handedOver) { r.handedTo = res.owner; save(); toast('🔁 الصبة دي اتسلمت لـ ' + res.owner); }
+      else if (res && res.auth === false) { toast('❌ الكود اتوقف — كلم المدير'); }
       else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
       next();
     }).catch(function () { syncing = false; setNet(); });
@@ -162,11 +163,11 @@ function login() {
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 function renderHome() {
-  var h = '<div style="padding:10px"><button class="btn g big" onclick="newReport()">➕ صبة جديدة</button></div>';
+  var h = '<div style="padding:10px" class="g2"><button class="btn g big" onclick="newReport()">➕ صبة جديدة</button><button class="btn big" onclick="showOpen()">🔁 استلام صبة شغالة</button></div>';
   var items = S.order.slice().reverse().map(function (id) {
     var r = S.reports[id]; if (!r) return '';
     var hd = r.data.header || {}, n = (r.data.rows || []).length;
-    var st = r.closedSynced ? '<span class="st f">✅ خلصت واتبعتت</span>' : r.final ? '<span class="st p">⏳ خلصت — مستنية نت</span>' :
+    var st = r.handedTo ? '<span class="st s">🔁 اتسلمت لـ ' + esc(r.handedTo) + '</span>' : r.closedSynced ? '<span class="st f">✅ خلصت واتبعتت</span>' : r.final ? '<span class="st p">⏳ خلصت — مستنية نت</span>' :
       (r.updatedAt > (r.syncedAt || 0) ? '<span class="st p">⏳ شغالة — مستنية نت</span>' : '<span class="st s">🟢 شغالة</span>');
     return '<div class="it" onclick="openRep(\'' + id + '\')"><div><b>' + esc(hd.client || 'بدون عميل') + '</b><br><span class="muted">' + esc(hd.element || '') + ' · ' + esc(hd.date) + ' · ' + n + ' عربية</span></div>' + st + '</div>';
   }).join('');
@@ -232,7 +233,7 @@ function renderAlerts() {
 function timeCell(i, k, lab, emoji) {
   var r = cur.data.rows[i], v = r[k];
   if (!v) return '<div class="tm"><label>' + lab + '</label><button class="now" onclick="stamp(' + i + ',\'' + k + '\')">' + emoji + ' الآن</button>' +
-    (k === 'exit' ? '<input type="time" style="margin-top:4px;font-size:14px;padding:5px" onchange="setT(' + i + ',\'' + k + '\',this.value)">' : '') + '</div>';
+    '<input type="time" title="لو بتسجل متأخر اكتب الوقت الحقيقي" style="margin-top:4px;font-size:14px;padding:5px" onchange="setT(' + i + ',\'' + k + '\',this.value);renderReport()"></div>';
   return '<div class="tm"><label>' + lab + '</label><input type="time" value="' + esc(v) + '" onchange="setT(' + i + ',\'' + k + '\',this.value)"></div>';
 }
 function stamp(i, k) { cur.data.rows[i][k] = nowHM(); touch(); renderReport(); }
@@ -288,7 +289,7 @@ function endEvent(j) { cur.data.events[j].to = nowHM(); touch(); renderReport();
 function delEvent(j) { if (confirm('تمسح الحدث؟')) { cur.data.events.splice(j, 1); touch(); renderReport(); } }
 
 function renderReport() {
-  var d = cur.data, h = d.header, ro = cur.final;
+  var d = cur.data, h = d.header, ro = cur.final || !!cur.handedTo;
   var html = '<div class="card" onclick="' + (ro ? '' : 'view=\'head\';render()') + '" style="cursor:pointer"><h3><span>' + esc(h.client) + '</span><span class="muted">' + (ro ? '' : '✏️ تعديل') + '</span></h3>' +
     '<div class="muted">' + esc(h.element || '') + ' · ' + esc(h.grade_strength || '') + (h.cement_content ? '/' + esc(h.cement_content) : '') + ' · ' + esc(h.date) + ' · ' + esc(h.pour_method || '') + ' ' + esc(h.pump_id || '') + '</div></div>';
   html += '<datalist id="els">' + elementsUsed().map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
@@ -303,7 +304,8 @@ function renderReport() {
       '<button class="btn g mini" onclick="arrived(\'' + x.id + '\')">📍 وصلت</button></div></div>';
   }).join('') + '</div>';
   var srv = (liveMsgs[cur.id] || []); if (srv.length && !ro) html += '<div class="alert y">📡 من السيرفر:<br>' + srv.map(esc).join('<br>') + '</div>';
-  if (ro) html += '<div class="alert y">' + (cur.closedSynced ? '✅ الصبة خلصت واتبعتت للمحطة.' : '⏳ الصبة خلصت وهتتبعت أول ما النت يرجع.') + '</div>';
+  if (cur.handedTo) html += '<div class="alert y">🔁 الصبة دي اتسلمت لـ <b>' + esc(cur.handedTo) + '</b> وهو اللي بيكمّلها.</div>';
+  else if (ro) html += '<div class="alert y">' + (cur.closedSynced ? '✅ الصبة خلصت واتبعتت للمحطة.' : '⏳ الصبة خلصت وهتتبعت أول ما النت يرجع.') + '</div>';
   var total = 0;
   d.rows.forEach(function (r, i) {
     if (!r.diverted && r.end) total += Number(r.qty_m3) || 0;
@@ -331,7 +333,7 @@ function renderReport() {
     '<div style="margin-top:8px"><label>أي مشاكل حدثت بالموقع أثناء الصب</label><textarea rows="2" data-p="footer.problems_text" oninput="setP(this)"' + dis2 + '>' + esc(f.problems_text) + '</textarea></div>' +
     '<p class="muted">إجمالي اللي اتصب: <b>' + total + ' م³</b>' + (h.qty_required_m3 ? ' من ' + esc(h.qty_required_m3) : '') + ' · ' + d.rows.length + ' عربية</p>' + byElement() + '</div>';
   html += '<div class="bar"><button class="btn l" style="width:35%" onclick="goHome()">🏠 الرئيسية</button>' +
-    (ro ? '' : '<button class="btn g" onclick="openSig()">✍️ إمضاء العميل وإنهاء</button>') + '</div>';
+    (ro ? '' : '<button class="btn l" style="width:30%" onclick="handOver()">🔁 تسليم</button><button class="btn g" onclick="openSig()">✍️ إمضاء وإنهاء</button>') + '</div>';
   document.getElementById('app').innerHTML = html;
   renderAlerts();
 }
@@ -352,10 +354,41 @@ function byElement() {
 function evCard(e, j, ro) {
   var dis = ro ? ' disabled' : '';
   return '<div class="card ev"><h3><span>★ ' + esc(e.type_ar) + '</span>' + (ro ? '' : '<button class="mini del" onclick="delEvent(' + j + ')">حذف</button>') + '</h3>' +
-    (e.type === 'other' || e.type === 'element_move' || e.type === 'breakdown' ? '' : '<div class="g2">' + '<div class="tm"><label>من</label><input type="time" value="' + esc(e.from) + '" onchange="cur.data.events[' + j + '].from=this.value;touch()"' + dis + '></div>' +
+    (e.type === 'other' || e.type === 'element_move' || e.type === 'breakdown' || e.type === 'handover' ? '' : '<div class="g2">' + '<div class="tm"><label>من</label><input type="time" value="' + esc(e.from) + '" onchange="cur.data.events[' + j + '].from=this.value;touch()"' + dis + '></div>' +
       (e.to ? '<div class="tm"><label>إلى</label><input type="time" value="' + esc(e.to) + '" onchange="cur.data.events[' + j + '].to=this.value;touch()"' + dis + '></div>' :
         '<div class="tm"><label>إلى</label>' + (ro ? '' : '<button class="now" onclick="endEvent(' + j + ')">✅ خلص الآن</button>') + '</div>') + '</div>') +
     '<div style="margin-top:6px"><input value="' + esc(e.text) + '" placeholder="السبب / التفاصيل" oninput="cur.data.events[' + j + '].text=this.value;cur.data.events[' + j + '].cause=this.value;touch()"' + dis + '></div></div>';
+}
+
+// ===================== تسليم واستلام الصبة بين الفنيين =====================
+function handOver() {
+  if (!navigator.onLine) return alert('محتاج نت علشان تسلّم: الفني التاني لازم يلاقي آخر حاجة سجلتها. شغّل النت وجرب تاني.');
+  cur.updatedAt = Date.now(); save(); syncAll(true);
+  alert('✅ اتبعت. خلي الفني اللي هيستلم يفتح التطبيق ويدوس «🔁 استلام صبة شغالة» ويختار الصبة دي.\nأول ما يستلمها، هتتقفل عندك.');
+}
+function showOpen() {
+  if (!navigator.onLine) return toast('محتاج نت علشان تستلم صبة');
+  toast('⏳ بيجيب الصبات الشغالة…');
+  api({ action: 'open', code: S.code }).then(function (r) {
+    if (!r.ok) return toast('❌ ' + (r.error || ''));
+    var list = r.open || [];
+    var h = '<div class="card"><h3>🔁 الصبات الشغالة دلوقتي</h3>' + (list.length ? '' : '<p class="muted">مفيش صبات شغالة</p>') + '</div><div class="card list" style="padding:0">' +
+      list.map(function (o) {
+        return '<div class="it" onclick="takeOver(\'' + o.repId + '\',\'' + esc(o.owner).replace(/'/g, '') + '\')"><div><b>' + esc(o.client) + '</b> · ' + esc(o.element) +
+          '<br><span class="muted">مع ' + esc(o.owner) + ' · ' + o.trucks + ' عربية' + (o.last ? ' · آخر تسجيل ' + esc(o.last) : '') + '</span></div><span class="st s">استلام ←</span></div>';
+      }).join('') + '</div><div style="padding:10px"><button class="btn l" onclick="goHome()">رجوع</button></div>';
+    view = 'open'; document.getElementById('app').innerHTML = h;
+  }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
+}
+function takeOver(repId, owner) {
+  if (!confirm('تستلم الصبة دي من ' + owner + '؟ هتكمّل أنت عليها ومش هيقدر يعدّل فيها بعد كده.')) return;
+  api({ action: 'takeover', code: S.code, repId: repId }).then(function (r) {
+    if (!r.ok) return toast('❌ ' + (r.error || ''));
+    var now = Date.now();
+    S.reports[repId] = { id: repId, sid: r.sid, data: r.data, updatedAt: now, syncedAt: now, lastPing: 0 };
+    if (S.order.indexOf(repId) < 0) S.order.push(repId);
+    save(); openRep(repId); toast('✅ استلمت الصبة');
+  }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 
 // ===================== المشرف: خروج العربيات =====================
@@ -402,7 +435,7 @@ function renderSupForm() {
     '<div><label>العميل</label><input list="cl" value="' + esc(f.client) + '" oninput="sf(\'client\',this.value)"><datalist id="cl">' + opts + '</datalist></div>' +
     '<div class="g2" style="margin-top:8px">' + inp('truck', 'رقم العربية', 'placeholder="T12"') + inp('driver', 'السائق') +
     inp('qty_m3', 'الكمية م³', 'inputmode="decimal"') + inp('exit_slump', 'معدل الهبوط', 'inputmode="decimal"') +
-    inp('temp', 'الحرارة', 'inputmode="decimal"') + inp('samples', 'العينات') +
+    inp('temp', 'الحرارة', 'inputmode="decimal"') + inp('samples', 'عدد العينات', 'inputmode="numeric"') +
     '<div><label>فني الموقع</label><input list="techs" value="' + esc(f.site_tech) + '" oninput="sf(\'site_tech\',this.value)"><datalist id="techs">' + (S.techs || []).map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist></div>' +
     '<div><label>وقت الخروج</label><input type="time" value="' + esc(f.exit) + '" onchange="sf(\'exit\',this.value)"></div>' +
     inp('grade', 'الرتبة', 'placeholder="300/400"') + inp('ticket', 'رقم البون', 'inputmode="numeric"') + '</div>' +
@@ -415,6 +448,7 @@ function saveDispatch() {
   var f = supForm;
   if (!f.client || !f.truck) return toast('اكتب العميل ورقم العربية');
   f.qty_m3 = Number(String(f.qty_m3).replace(',', '.')) || f.qty_m3;
+  if (f.samples !== '' && f.samples != null) f.samples = Number(String(f.samples).replace(/[^0-9]/g, '')) || f.samples;
   if (f.exit_slump !== '' && f.exit_slump != null) f.exit_slump = Number(String(f.exit_slump).replace(',', '.')) || f.exit_slump;
   f.synced = false;
   var i = S.disp.map(function (x) { return x.id; }).indexOf(f.id);
