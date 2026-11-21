@@ -12,35 +12,35 @@
 <style>
 :root{color-scheme:light only;--b:#1f4e78;--g:#1f7a3a;--r:#c0392b;--y:#e0a800;--bg:#eef1f4}
 *{box-sizing:border-box}
-body{margin:0;font-family:Tahoma,Arial,sans-serif;background:var(--bg);color:#222;font-size:17px;padding-bottom:90px;-webkit-text-size-adjust:100%}
+body{margin:0;font-family:Tahoma,Arial,sans-serif;background:var(--bg);color:#222;font-size:calc(17px * var(--z,1));padding-bottom:90px;-webkit-text-size-adjust:100%}
 header{background:var(--b);color:#fff;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
 header b{font-size:17px}
 header small{opacity:.85}
 .net{font-size:12px;padding:3px 8px;border-radius:10px;background:#ffffff22}
 .card{background:#fff;margin:10px;padding:12px;border-radius:12px;box-shadow:0 1px 3px #0002}
-.card h3{margin:0 0 8px;font-size:16px;display:flex;justify-content:space-between;align-items:center;gap:6px}
-label{font-size:14px;color:#666;display:block;margin-bottom:2px}
-input,select,textarea{width:100%;font-size:18px;padding:10px 7px;border:1px solid #bbb;border-radius:8px;background:#fff;font-family:inherit}
+.card h3{margin:0 0 8px;font-size:calc(16px * var(--z,1));display:flex;justify-content:space-between;align-items:center;gap:6px}
+label{font-size:calc(14px * var(--z,1));color:#666;display:block;margin-bottom:2px}
+input,select,textarea{width:100%;font-size:calc(18px * var(--z,1));padding:10px 7px;border:1px solid #bbb;border-radius:8px;background:#fff;font-family:inherit}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-button{font-family:inherit;font-size:17px;border:0;border-radius:10px;padding:11px;cursor:pointer}
+button{font-family:inherit;font-size:calc(17px * var(--z,1));border:0;border-radius:10px;padding:11px;cursor:pointer}
 .btn{background:var(--b);color:#fff;width:100%}
 .btn.g{background:var(--g)}.btn.r{background:var(--r)}.btn.l{background:#e8edf3;color:#1f4e78}
-.big{font-size:18px;padding:15px}
-.now{background:#e6f3ea;color:var(--g);font-weight:bold;width:100%;padding:12px 4px;font-size:15px}
+.big{font-size:calc(18px * var(--z,1));padding:15px}
+.now{background:#e6f3ea;color:var(--g);font-weight:bold;width:100%;padding:12px 4px;font-size:calc(15px * var(--z,1))}
 .tm input{text-align:center;font-weight:bold;color:var(--b)}
 .tm label{text-align:center}
-.mini{font-size:13px;padding:6px 10px;width:auto}
+.mini{font-size:calc(13px * var(--z,1));padding:6px 10px;width:auto}
 .del{background:#fde2e2;color:var(--r)}
 .row{display:flex;gap:8px;align-items:center}
 .list .it{display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid #eee;cursor:pointer}
-.st{font-size:14px;padding:3px 8px;border-radius:10px;white-space:nowrap}
+.st{font-size:calc(14px * var(--z,1));padding:3px 8px;border-radius:10px;white-space:nowrap}
 .st.p{background:#fff3cd;color:#8a6d00}.st.s{background:#e3f0ff;color:#1f4e78}.st.f{background:#e6f3ea;color:var(--g)}
 .alert{margin:10px;padding:10px;border-radius:10px;font-size:14px;line-height:1.7}
 .alert.r{background:#fde2e2;border-right:5px solid var(--r)}.alert.y{background:#fff3cd;border-right:5px solid var(--y)}
-.badge{font-size:12px;padding:2px 8px;border-radius:10px;background:#fde2e2;color:var(--r);font-weight:bold}
+.badge{font-size:calc(12px * var(--z,1));padding:2px 8px;border-radius:10px;background:#fde2e2;color:var(--r);font-weight:bold}
 .badge.y{background:#fff3cd;color:#8a6d00}.badge.g{background:#e6f3ea;color:var(--g)}
 .bar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:10px;box-shadow:0 -2px 8px #0002;display:flex;gap:8px;z-index:6}
-.muted{color:#666;font-size:15px}
+.muted{color:#666;font-size:calc(15px * var(--z,1))}
 .ev{border-right:4px solid var(--y)}
 .done{opacity:.75}
 #sigWrap{position:fixed;inset:0;background:#000a;display:none;z-index:20;align-items:center;justify-content:center}
@@ -49,14 +49,16 @@ button{font-family:inherit;font-size:17px;border:0;border-radius:10px;padding:11
 .toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:10px;z-index:30;font-size:14px;display:none}
 .center{text-align:center}
 .chk{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px}.chk input{width:auto}
+body.zbig .g4{grid-template-columns:repeat(2,1fr)}
+body.zbig .g3{grid-template-columns:repeat(2,1fr)}
 </style>
 </head>
 <body>
 <header><div><b>📋 سايت شيت</b><br><small id="who"></small></div><div style="display:flex;gap:6px;align-items:center"><button onclick="zoomUp()" style="background:#ffffff22;color:#fff;padding:5px 10px;font-size:15px">🔍 الخط</button><span class="net" id="net">…</span></div></header>
 <div id="app"></div>
 <div id="sigWrap"><div id="sigBox">
-  <h3 style="margin:4px 0 8px">✍️ إمضاء مندوب العميل</h3>
-  <label>اسم المندوب</label><input id="repName">
+  <h3 style="margin:4px 0 8px">✍️ إمضاء الفني</h3>
+  <div class="muted" id="sigWho"></div>
   <label style="margin-top:8px">امضي هنا بصباعك</label>
   <canvas id="sig" width="1000" height="400"></canvas>
   <div class="g3" style="margin-top:8px"><button class="btn l" onclick="sigClear()">مسح</button><button class="btn l" onclick="sigClose()">رجوع</button><button class="btn g" onclick="finish()">✅ إنهاء وإرسال</button></div>
@@ -87,7 +89,7 @@ function since(hm) { var m = mins(hm); if (m == null) return null; var n = mins(
 
 // ===================== الشبكة والمزامنة =====================
 function setNet() {
-  var pend = S.order.filter(function (id) { var r = S.reports[id]; return r && r.updatedAt > (r.syncedAt || 0); }).length + S.disp.filter(function (d) { return !d.synced; }).length;
+  var pend = S.order.filter(function (id) { var r = S.reports[id]; return r && !r.closedSynced && !r.handedTo && ((r.data.rows || []).length || r.sid) && r.updatedAt > (r.syncedAt || 0); }).length + S.disp.filter(function (d) { return !d.synced; }).length;
   document.getElementById('net').textContent = (navigator.onLine ? '🟢 متصل' : '🔴 من غير نت') + (pend ? ' · ⏳ ' + pend : '');
 }
 function api(body) {
@@ -196,7 +198,7 @@ function renderHome() {
     var r = S.reports[id]; if (!r) return '';
     var hd = r.data.header || {}, n = (r.data.rows || []).length;
     var st = r.handedTo ? '<span class="st s">🔁 اتسلمت لـ ' + esc(r.handedTo) + '</span>' : r.closedSynced ? '<span class="st f">✅ خلصت واتبعتت</span>' : r.final ? '<span class="st p">⏳ خلصت — مستنية نت</span>' :
-      (r.updatedAt > (r.syncedAt || 0) ? '<span class="st p">⏳ شغالة — مستنية نت</span>' : '<span class="st s">🟢 شغالة</span>');
+      (!n && !r.sid ? '<span class="st s">📝 لسه فاضية</span>' : r.updatedAt > (r.syncedAt || 0) ? '<span class="st p">⏳ شغالة — مستنية نت</span>' : '<span class="st s">🟢 شغالة</span>');
     var canDel = !r.final && !r.closedSynced && !r.handedTo && !n;
     return '<div class="it" onclick="openRep(\'' + id + '\')"><div><b>' + esc(hd.client || 'بدون عميل') + (hd.site ? ' — ' + esc(hd.site) : '') + '</b><br><span class="muted">' + esc(hd.element || '') + ' · ' + esc(hd.date) + ' · ' + n + ' عربية</span></div>' +
       '<div style="display:flex;gap:6px;align-items:center">' + st + (canDel ? '<button class="mini del" onclick="event.stopPropagation();delReport(\'' + id + '\')">🗑</button>' : '') + '</div></div>';
@@ -260,26 +262,31 @@ function setP(el) {
   if (v === '') v = null;
   o[k] = v; touch();
 }
+function siteList() {
+  var out = [];
+  Object.keys(S.sites || {}).forEach(function (k) { (S.sites[k] || []).forEach(function (x) { if (out.indexOf(x) < 0) out.push(x); }); });
+  return out;
+}
 /** قائمة اختيار العميل والموقع. onPick(نوع, قيمة) */
 function clientSelects(client, site, fnName) {
   var cl = S.clients.slice(); if (client && cl.indexOf(client) < 0) cl.unshift(client);
-  var st = (S.sites[client] || []).slice(); if (site && st.indexOf(site) < 0) st.unshift(site);
+  var st = siteList(); if (site && st.indexOf(site) < 0) st.unshift(site);
   var h = '<div><label>العميل</label><select onchange="' + fnName + '(\'client\',this.value)"><option value="">— اختار العميل —</option>' +
     cl.map(function (c) { return '<option' + (c === client ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select>' +
     (S.clients.length ? '' : '<div class="muted">القائمة فاضية — المدير يضيف العملاء في شيت «العملاء» ويدوس 🔄</div>') + '</div>';
   h += '<div style="margin-top:8px"><label>الموقع</label><select onchange="' + fnName + '(\'site\',this.value)"' + (st.length ? '' : ' disabled') + '>' +
-    (st.length ? '<option value="">— اختار الموقع —</option>' : '<option value="">' + (client ? 'مفيش مواقع متسجلة للعميل ده' : 'اختار العميل الأول') + '</option>') +
+    (st.length ? '<option value="">— اختار الموقع —</option>' : '<option value="">مفيش مواقع — المدير يضيفها في شيت «العملاء» عمود المواقع</option>') +
     st.map(function (x) { return '<option' + (x === site ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>';
   return h;
 }
 function pickHead(k, v) {
   cur.data.header[k] = v || null;
-  if (k === 'client') { var st = S.sites[v] || []; cur.data.header.site = st.length === 1 ? st[0] : null; }
+  
   touch(); renderHeader();
 }
 function pickSup(k, v) {
   supForm[k] = v;
-  if (k === 'client') { var st = S.sites[v] || []; supForm.site = st.length === 1 ? st[0] : ''; }
+  
   renderSupForm();
 }
 function cancelNew() {
@@ -353,7 +360,7 @@ function addTruck() {
 /* الإجهاد الحالي: آخر نقل لعنصر قبل العربية دي، وإلا بتاع الصبة */
 function gradeAt(i) {
   var h = cur.data.header, g = { gs: h.grade_strength || '', cc: h.cement_content || '' };
-  cur.data.events.forEach(function (e) { if (e.type === 'element_move' && +e.after_row <= i + 1 && (e.grade_strength || e.cement_content)) g = { gs: e.grade_strength || '', cc: e.cement_content || '' }; });
+  cur.data.events.forEach(function (e) { if ((e.type === 'element_move' || e.type === 'pump_move') && +e.after_row <= i + 1 && (e.grade_strength || e.cement_content)) g = { gs: e.grade_strength || '', cc: e.cement_content || '' }; });
   return g;
 }
 var moveForm = null;
@@ -391,7 +398,7 @@ function leftoverLine(i) {
   leftForm = { i: i, client: '', site: '', element: '', qty: '', grade_strength: cur.data.header.grade_strength || '', cement_content: cur.data.header.cement_content || '' };
   view = 'left'; render(); window.scrollTo(0, 0);
 }
-function pickLeft(k, v) { leftForm[k] = v; if (k === 'client') { var st = S.sites[v] || []; leftForm.site = st.length === 1 ? st[0] : ''; } renderLeft(); }
+function pickLeft(k, v) { leftForm[k] = v;  renderLeft(); }
 function renderLeft() {
   var f = leftForm, r = cur.data.rows[f.i] || {};
   function inp(k, lab, attrs) { return '<div><label>' + lab + '</label><input value="' + esc(f[k]) + '" oninput="leftForm[\'' + k + '\']=this.value" ' + (attrs || '') + '></div>'; }
@@ -489,7 +496,7 @@ function renderReport() {
     '<div style="margin-top:8px"><label>أي مشاكل حدثت بالموقع أثناء الصب</label><textarea rows="2" data-p="footer.problems_text" oninput="setP(this)"' + dis2 + '>' + esc(f.problems_text) + '</textarea></div>' +
     '<p class="muted">إجمالي اللي اتصب: <b>' + total + ' م³</b>' + (h.qty_required_m3 ? ' من ' + esc(h.qty_required_m3) : '') + ' · ' + d.rows.length + ' عربية</p>' + byElement() + '</div>';
   html += '<div class="bar"><button class="btn l" style="width:35%" onclick="goHome()">🏠 الرئيسية</button>' +
-    (ro ? '' : '<button class="btn l" style="width:30%" onclick="handOver()">🔁 تسليم</button><button class="btn g" onclick="openSig()">✍️ إمضاء وإنهاء</button>') + '</div>';
+    (ro ? '' : '<button class="btn l" style="width:30%" onclick="handOver()">🔁 تسليم</button><button class="btn g" onclick="openSig()">✍️ إنهاء الصبة</button>') + '</div>';
   document.getElementById('app').innerHTML = html;
   renderAlerts();
 }
@@ -508,6 +515,7 @@ function splitPour(d) {
     parts.push({ el: curEl, q: rest });
     moved.forEach(function (x) { parts.push({ el: x.el, q: x.q }); });
     mine.forEach(function (e) { if (e.type === 'element_move' && e.element) curEl = e.element; });
+    ev.forEach(function (e) { if (e.type === 'pump_move' && e.element && +e.after_row === i + 1) curEl = e.element; });
     if (r.end) { parts.forEach(function (p) { if (p.q) tot[p.el] = (tot[p.el] || 0) + p.q; }); out += leftover; }
     per.push({ parts: parts, out: leftover });
   });
@@ -525,7 +533,19 @@ function evCard(e, j, ro) {
     (e.type === 'other' || e.type === 'element_move' || e.type === 'leftover' || e.type === 'breakdown' || e.type === 'handover' ? '' : '<div class="g2">' + '<div class="tm"><label>من</label><input type="time" value="' + esc(e.from) + '" onchange="cur.data.events[' + j + '].from=this.value;touch()"' + dis + '></div>' +
       (e.to ? '<div class="tm"><label>إلى</label><input type="time" value="' + esc(e.to) + '" onchange="cur.data.events[' + j + '].to=this.value;touch()"' + dis + '></div>' :
         '<div class="tm"><label>إلى</label>' + (ro ? '' : '<button class="now" onclick="endEvent(' + j + ')">✅ خلص الآن</button>') + '</div>') + '</div>') +
-    '<div style="margin-top:6px"><input value="' + esc(e.text) + '" placeholder="السبب / التفاصيل" oninput="cur.data.events[' + j + '].text=this.value;cur.data.events[' + j + '].cause=this.value;touch()"' + dis + '></div></div>';
+    '<div style="margin-top:6px"><input value="' + esc(e.text) + '" placeholder="السبب / التفاصيل" oninput="cur.data.events[' + j + '].text=this.value;cur.data.events[' + j + '].cause=this.value;touch()"' + dis + '></div>' +
+    (e.type === 'pump_move' ? pumpElement(e, j, dis) : '') + '</div>';
+}
+/* نقل المضخة لعنصر تاني: العربيات اللي بعد النقل بتتحسب على العنصر الجديد */
+function pumpElement(e, j, dis) {
+  if (e.element === undefined && !e._askEl) {
+    return dis ? '' : '<button class="btn l mini" style="width:100%;margin-top:6px" onclick="cur.data.events[' + j + ']._askEl=1;renderReport()">↪ النقل ده لعنصر تاني؟</button>';
+  }
+  if (e.grade_strength === undefined && e.cement_content === undefined) { var g = gradeAt(Math.max(0, (+e.after_row || 1) - 1)); e.grade_strength = g.gs; e.cement_content = g.cc; }
+  return '<div style="margin-top:6px;border-top:1px dashed #ccc;padding-top:6px"><label>العنصر بعد النقل (العربيات الجاية هتتحسب عليه)</label>' +
+    '<input list="els" value="' + esc(e.element || '') + '" placeholder="مثلاً: سقف الدور التاني" oninput="cur.data.events[' + j + '].element=this.value.trim()||null;touch()"' + dis + '>' +
+    '<div class="g2" style="margin-top:6px"><div><label>الإجهاد</label><input inputmode="numeric" value="' + esc(e.grade_strength) + '" oninput="cur.data.events[' + j + '].grade_strength=Number(this.value)||this.value||null;touch()"' + dis + '></div>' +
+    '<div><label>الأسمنت</label><input inputmode="numeric" value="' + esc(e.cement_content) + '" oninput="cur.data.events[' + j + '].cement_content=Number(this.value)||this.value||null;touch()"' + dis + '></div></div></div>';
 }
 
 // ===================== تسليم واستلام الصبة بين الفنيين =====================
@@ -686,7 +706,7 @@ function openSig() {
     return;
   }
   document.getElementById('sigWrap').style.display = 'flex';
-  document.getElementById('repName').value = d.client_rep || '';
+  document.getElementById('sigWho').textContent = 'الفني: ' + S.name + ' — امضي وبعدين «إنهاء وإرسال»';
   cv = document.getElementById('sig'); cx = cv.getContext('2d'); sigClear();
 }
 function sigClose() { document.getElementById('sigWrap').style.display = 'none'; }
@@ -701,10 +721,8 @@ function sigInit() {
   c.addEventListener('touchstart', down, { passive: false }); c.addEventListener('touchmove', move, { passive: false }); c.addEventListener('touchend', up);
 }
 function finish() {
-  var name = document.getElementById('repName').value.trim();
-  if (!name) return toast('اكتب اسم المندوب');
   if (!hasInk && !confirm('مفيش إمضاء. تكمّل من غير إمضاء؟')) return;
-  cur.data.client_rep = name;
+  cur.data.header.technician = cur.data.header.technician || S.name;
   cur.data.closed = true;
   if (hasInk) { var small = document.createElement('canvas'); small.width = 500; small.height = 200; small.getContext('2d').drawImage(cv, 0, 0, 500, 200); cur.signature = small.toDataURL('image/png'); }
   cur.final = true; touch(); sigClose(); renderReport(); syncAll(true);
@@ -713,7 +731,7 @@ function finish() {
 
 // ===================== حجم الخط =====================
 var ZOOMS = [1, 1.15, 1.3, 1.5];
-function applyZoom() { document.body.style.zoom = ZOOMS[S.zoom || 0]; }
+function applyZoom() { var z = ZOOMS[S.zoom || 0]; document.body.style.zoom = ''; document.documentElement.style.setProperty('--z', z); document.body.classList.toggle('zbig', z > 1.1); }
 function zoomUp() { S.zoom = ((S.zoom || 0) + 1) % ZOOMS.length; save(); applyZoom(); toast('حجم الخط: ' + Math.round(ZOOMS[S.zoom] * 100) + '%'); }
 
 // ===================== تشغيل =====================
