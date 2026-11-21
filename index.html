@@ -4,24 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1f4e78">
+<meta name="color-scheme" content="light only">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>سايت شيت — جودة إيجي مكس</title>
 <style>
-:root{--b:#1f4e78;--g:#1f7a3a;--r:#c0392b;--y:#e0a800;--bg:#eef1f4}
+:root{color-scheme:light only;--b:#1f4e78;--g:#1f7a3a;--r:#c0392b;--y:#e0a800;--bg:#eef1f4}
 *{box-sizing:border-box}
-body{margin:0;font-family:Tahoma,Arial,sans-serif;background:var(--bg);color:#222;font-size:15px;padding-bottom:90px}
+body{margin:0;font-family:Tahoma,Arial,sans-serif;background:var(--bg);color:#222;font-size:17px;padding-bottom:90px;-webkit-text-size-adjust:100%}
 header{background:var(--b);color:#fff;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
 header b{font-size:17px}
 header small{opacity:.85}
 .net{font-size:12px;padding:3px 8px;border-radius:10px;background:#ffffff22}
 .card{background:#fff;margin:10px;padding:12px;border-radius:12px;box-shadow:0 1px 3px #0002}
 .card h3{margin:0 0 8px;font-size:16px;display:flex;justify-content:space-between;align-items:center;gap:6px}
-label{font-size:12px;color:#666;display:block;margin-bottom:2px}
-input,select,textarea{width:100%;font-size:16px;padding:9px 7px;border:1px solid #bbb;border-radius:8px;background:#fff;font-family:inherit}
+label{font-size:14px;color:#666;display:block;margin-bottom:2px}
+input,select,textarea{width:100%;font-size:18px;padding:10px 7px;border:1px solid #bbb;border-radius:8px;background:#fff;font-family:inherit}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-button{font-family:inherit;font-size:16px;border:0;border-radius:10px;padding:11px;cursor:pointer}
+button{font-family:inherit;font-size:17px;border:0;border-radius:10px;padding:11px;cursor:pointer}
 .btn{background:var(--b);color:#fff;width:100%}
 .btn.g{background:var(--g)}.btn.r{background:var(--r)}.btn.l{background:#e8edf3;color:#1f4e78}
 .big{font-size:18px;padding:15px}
@@ -32,14 +33,14 @@ button{font-family:inherit;font-size:16px;border:0;border-radius:10px;padding:11
 .del{background:#fde2e2;color:var(--r)}
 .row{display:flex;gap:8px;align-items:center}
 .list .it{display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid #eee;cursor:pointer}
-.st{font-size:12px;padding:3px 8px;border-radius:10px;white-space:nowrap}
+.st{font-size:14px;padding:3px 8px;border-radius:10px;white-space:nowrap}
 .st.p{background:#fff3cd;color:#8a6d00}.st.s{background:#e3f0ff;color:#1f4e78}.st.f{background:#e6f3ea;color:var(--g)}
 .alert{margin:10px;padding:10px;border-radius:10px;font-size:14px;line-height:1.7}
 .alert.r{background:#fde2e2;border-right:5px solid var(--r)}.alert.y{background:#fff3cd;border-right:5px solid var(--y)}
 .badge{font-size:12px;padding:2px 8px;border-radius:10px;background:#fde2e2;color:var(--r);font-weight:bold}
 .badge.y{background:#fff3cd;color:#8a6d00}.badge.g{background:#e6f3ea;color:var(--g)}
 .bar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:10px;box-shadow:0 -2px 8px #0002;display:flex;gap:8px;z-index:6}
-.muted{color:#777;font-size:13px}
+.muted{color:#666;font-size:15px}
 .ev{border-right:4px solid var(--y)}
 .done{opacity:.75}
 #sigWrap{position:fixed;inset:0;background:#000a;display:none;z-index:20;align-items:center;justify-content:center}
@@ -51,7 +52,7 @@ button{font-family:inherit;font-size:16px;border:0;border-radius:10px;padding:11
 </style>
 </head>
 <body>
-<header><div><b>📋 سايت شيت</b><br><small id="who"></small></div><span class="net" id="net">…</span></header>
+<header><div><b>📋 سايت شيت</b><br><small id="who"></small></div><div style="display:flex;gap:6px;align-items:center"><button onclick="zoomUp()" style="background:#ffffff22;color:#fff;padding:5px 10px;font-size:15px">🔍 الخط</button><span class="net" id="net">…</span></div></header>
 <div id="app"></div>
 <div id="sigWrap"><div id="sigBox">
   <h3 style="margin:4px 0 8px">✍️ إمضاء مندوب العميل</h3>
@@ -67,7 +68,7 @@ var KEY = 'qc_site_app_v1';
 var S = load();
 function load() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('⚠️ الذاكرة مليانة'); } }
-S.reports = S.reports || {}; S.order = S.order || []; S.clients = S.clients || []; S.disp = S.disp || []; S.dispToday = S.dispToday || [];
+S.reports = S.reports || {}; S.order = S.order || []; S.clients = S.clients || []; S.sites = S.sites || {}; S.disp = S.disp || []; S.dispToday = S.dispToday || [];
 var qs = new URLSearchParams(location.search);
 if (qs.get('api')) { S.api = qs.get('api'); save(); history.replaceState(null, '', location.pathname); }
 
@@ -120,6 +121,7 @@ function syncAll(force) {
         r.syncedAt = sentAt; r.lastPing = Date.now(); r.sid = res.sid;
         if (r.final && res.final) { r.closedSynced = true; delete r.signature; }
         liveMsgs[r.id] = res.live || [];
+        if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites;
         r.incoming = res.incoming || [];
       } else if (res && res.handedOver) { r.handedTo = res.owner; save(); toast('🔁 الصبة دي اتسلمت لـ ' + res.owner); }
       else if (res && res.auth === false) { toast('❌ الكود اتوقف — كلم المدير'); }
@@ -159,7 +161,7 @@ function login() {
   toast('⏳ بيتأكد…');
   api({ action: 'login', code: c }).then(function (r) {
     if (!r.ok) return toast('❌ ' + (r.error || 'الكود غلط'));
-    S.code = c; S.name = r.name; S.role = r.role || 'tech'; S.clients = r.clients || []; save(); render(); syncAll(true);
+    S.code = c; S.name = r.name; S.role = r.role || 'tech'; S.clients = r.clients || []; S.sites = r.sites || {}; save(); render(); syncAll(true);
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 function renderHome() {
@@ -172,9 +174,15 @@ function renderHome() {
     return '<div class="it" onclick="openRep(\'' + id + '\')"><div><b>' + esc(hd.client || 'بدون عميل') + '</b><br><span class="muted">' + esc(hd.element || '') + ' · ' + esc(hd.date) + ' · ' + n + ' عربية</span></div>' + st + '</div>';
   }).join('');
   h += '<div class="card list" style="padding:0">' + (items || '<p class="center muted" style="padding:20px">مفيش صبات لسه</p>') + '</div>';
-  h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="syncAll(true);toast(\'⏳ بيبعت…\')">🔄 إرسال دلوقتي</button><button class="btn l" onclick="cleanup()">🧹 مسح القديم</button></div>';
+  h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="refreshLists()">🔄 تحديث</button><button class="btn l" onclick="cleanup()">🧹 مسح القديم</button></div>';
   h += '<p class="center muted"><a href="#" onclick="logout();return false">خروج</a></p>';
   document.getElementById('app').innerHTML = h;
+}
+function refreshLists() {
+  if (!navigator.onLine) return toast('مفيش نت');
+  toast('⏳ بيحدّث…');
+  api({ action: 'login', code: S.code }).then(function (r) { if (r.ok) { S.clients = r.clients || []; S.sites = r.sites || {}; save(); toast('✅ القوايم اتحدثت'); } }).catch(function () {});
+  syncAll(true);
 }
 function logout() { if (confirm('خروج؟ الصبات اللي متبعتتش هتفضل محفوظة.')) { delete S.code; save(); render(); } }
 function cleanup() {
@@ -199,18 +207,40 @@ function setP(el) {
   if (v === '') v = null;
   o[k] = v; touch();
 }
+/** قائمة اختيار العميل والموقع. onPick(نوع, قيمة) */
+function clientSelects(client, site, fnName) {
+  var cl = S.clients.slice(); if (client && cl.indexOf(client) < 0) cl.unshift(client);
+  var st = (S.sites[client] || []).slice(); if (site && st.indexOf(site) < 0) st.unshift(site);
+  var h = '<div><label>العميل</label><select onchange="' + fnName + '(\'client\',this.value)"><option value="">— اختار العميل —</option>' +
+    cl.map(function (c) { return '<option' + (c === client ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select>' +
+    (S.clients.length ? '' : '<div class="muted">القائمة فاضية — المدير يضيف العملاء في شيت «العملاء» ويدوس 🔄</div>') + '</div>';
+  h += '<div style="margin-top:8px"><label>الموقع</label><select onchange="' + fnName + '(\'site\',this.value)"' + (st.length ? '' : ' disabled') + '>' +
+    (st.length ? '<option value="">— اختار الموقع —</option>' : '<option value="">' + (client ? 'مفيش مواقع متسجلة للعميل ده' : 'اختار العميل الأول') + '</option>') +
+    st.map(function (x) { return '<option' + (x === site ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>';
+  return h;
+}
+function pickHead(k, v) {
+  cur.data.header[k] = v || null;
+  if (k === 'client') { var st = S.sites[v] || []; cur.data.header.site = st.length === 1 ? st[0] : null; }
+  touch(); renderHeader();
+}
+function pickSup(k, v) {
+  supForm[k] = v;
+  if (k === 'client') { var st = S.sites[v] || []; supForm.site = st.length === 1 ? st[0] : ''; }
+  renderSupForm();
+}
 function renderHeader() {
   var h = cur.data.header;
   var opts = S.clients.map(function (c) { return '<option value="' + esc(c) + '">'; }).join('');
   document.getElementById('app').innerHTML = '<div class="card"><h3>بيانات الصبة</h3>' +
-    '<div><label>اسم العميل</label><input data-p="header.client" list="cl" value="' + esc(h.client) + '" oninput="setP(this)"><datalist id="cl">' + opts + '</datalist></div>' +
-    '<div class="g2" style="margin-top:8px">' + fld('header.site', 'عنوان الموقع', h.site) + fld('header.element', 'العنصر المصبوب', h.element) +
+    clientSelects(h.client, h.site, 'pickHead') +
+    '<div class="g2" style="margin-top:8px">' + fld('header.element', 'العنصر المصبوب', h.element) +
     fld('header.grade_strength', 'الإجهاد', h.grade_strength, 'inputmode="numeric" data-n') + fld('header.cement_content', 'الأسمنت', h.cement_content, 'inputmode="numeric" data-n') +
     fld('header.qty_required_m3', 'الكمية المطلوبة م³', h.qty_required_m3, 'inputmode="decimal" data-n') + fld('header.date', 'التاريخ', h.date, 'type="date"') +
     '<div><label>طريقة الصب</label><select data-p="header.pour_method" onchange="setP(this)">' + ['مضخة', 'مزراب'].map(function (x) { return '<option' + (h.pour_method === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
     fld('header.pump_id', 'رقم المضخة', h.pump_id) + fld('header.operator', 'المشغل', h.operator) + fld('header.site_manager', 'مسئول الموقع', h.site_manager) +
     fld('header.distance_km', 'المسافة كم', h.distance_km, 'inputmode="decimal" data-n') + '</div></div>' +
-    '<div class="bar"><button class="btn g big" onclick="if(!cur.data.header.client){toast(\'اكتب اسم العميل\');return}view=\'rep\';render();syncAll(true)">التالي ← العربيات</button></div>';
+    '<div class="bar"><button class="btn g big" onclick="if(!cur.data.header.client){toast(\'اختار العميل\');return}view=\'rep\';render();syncAll(true)">التالي ← العربيات</button></div>';
 }
 
 function liveLocal() {
@@ -400,7 +430,7 @@ function syncDispatch(force) {
   api({ action: 'dispatch', code: S.code, items: pend }).then(function (res) {
     syncing = false;
     if (S.disp.some(function (d) { return !d.synced && pend.indexOf(d) < 0; })) setTimeout(function () { syncDispatch(false); }, 300);
-    if (res && res.ok) { pend.forEach(function (d) { d.synced = true; }); S.dispToday = res.today || []; if (res.clients) S.clients = res.clients; if (res.techs) S.techs = res.techs; if (res.plantUrl) S.plantUrl = res.plantUrl; save(); if (!supForm) render(); else setNet(); }
+    if (res && res.ok) { pend.forEach(function (d) { d.synced = true; }); S.dispToday = res.today || []; if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.techs) S.techs = res.techs; if (res.plantUrl) S.plantUrl = res.plantUrl; save(); if (!supForm) render(); else setNet(); }
     else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
   }).catch(function () { syncing = false; setNet(); });
 }
@@ -432,21 +462,21 @@ function renderSupForm() {
   function inp(k, lab, attrs) { return '<div><label>' + lab + '</label><input value="' + esc(f[k]) + '" oninput="sf(\'' + k + '\',this.value)" ' + (attrs || '') + '></div>'; }
   var opts = S.clients.map(function (c) { return '<option value="' + esc(c) + '">'; }).join('');
   document.getElementById('app').innerHTML = '<div class="card"><h3>🚚 خروج عربية</h3>' +
-    '<div><label>العميل</label><input list="cl" value="' + esc(f.client) + '" oninput="sf(\'client\',this.value)"><datalist id="cl">' + opts + '</datalist></div>' +
+    clientSelects(f.client, f.site, 'pickSup') +
     '<div class="g2" style="margin-top:8px">' + inp('truck', 'رقم العربية', 'placeholder="T12"') + inp('driver', 'السائق') +
     inp('qty_m3', 'الكمية م³', 'inputmode="decimal"') + inp('exit_slump', 'معدل الهبوط', 'inputmode="decimal"') +
     inp('temp', 'الحرارة', 'inputmode="decimal"') + inp('samples', 'عدد العينات', 'inputmode="numeric"') +
     '<div><label>فني الموقع</label><input list="techs" value="' + esc(f.site_tech) + '" oninput="sf(\'site_tech\',this.value)"><datalist id="techs">' + (S.techs || []).map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist></div>' +
     '<div><label>وقت الخروج</label><input type="time" value="' + esc(f.exit) + '" onchange="sf(\'exit\',this.value)"></div>' +
     inp('grade', 'الرتبة', 'placeholder="300/400"') + inp('ticket', 'رقم البون', 'inputmode="numeric"') + '</div>' +
-    inp('site', 'الموقع') + inp('sup_note', 'ملاحظات') + (isEdit ? '<p class="center"><a href="#" style="color:#c0392b" onclick="cancelDispatch();return false">إلغاء العربية دي (اتسجلت بالغلط)</a></p>' : '') + '</div>' +
+    inp('sup_note', 'ملاحظات') + (isEdit ? '<p class="center"><a href="#" style="color:#c0392b" onclick="cancelDispatch();return false">إلغاء العربية دي (اتسجلت بالغلط)</a></p>' : '') + '</div>' +
     '<div class="bar"><button class="btn l" style="width:30%" onclick="supForm=null;render()">رجوع</button>' +
     (isEdit ? '<button class="btn l" style="width:30%" onclick="markBroken()">🛠 عطلت</button>' : '') +
     '<button class="btn g" onclick="saveDispatch()">✅ ' + (isEdit ? 'حفظ' : 'خرجت') + '</button></div>';
 }
 function saveDispatch() {
   var f = supForm;
-  if (!f.client || !f.truck) return toast('اكتب العميل ورقم العربية');
+  if (!f.client || !f.truck) return toast('اختار العميل واكتب رقم العربية');
   f.qty_m3 = Number(String(f.qty_m3).replace(',', '.')) || f.qty_m3;
   if (f.samples !== '' && f.samples != null) f.samples = Number(String(f.samples).replace(/[^0-9]/g, '')) || f.samples;
   if (f.exit_slump !== '' && f.exit_slump != null) f.exit_slump = Number(String(f.exit_slump).replace(',', '.')) || f.exit_slump;
@@ -501,7 +531,13 @@ function finish() {
   toast(navigator.onLine ? '⏳ بيتبعت…' : '📴 اتحفظ — هيتبعت أول ما النت يرجع');
 }
 
+// ===================== حجم الخط =====================
+var ZOOMS = [1, 1.15, 1.3, 1.5];
+function applyZoom() { document.body.style.zoom = ZOOMS[S.zoom || 0]; }
+function zoomUp() { S.zoom = ((S.zoom || 0) + 1) % ZOOMS.length; save(); applyZoom(); toast('حجم الخط: ' + Math.round(ZOOMS[S.zoom] * 100) + '%'); }
+
 // ===================== تشغيل =====================
+applyZoom();
 sigInit();
 render();
 syncAll(true);
