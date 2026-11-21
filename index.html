@@ -187,7 +187,7 @@ function login() {
   toast('⏳ بيتأكد…');
   api({ action: 'login', code: c }).then(function (r) {
     if (!r.ok) return toast('❌ ' + (r.error || 'الكود غلط'));
-    S.code = c; S.name = r.name; S.role = r.role || 'tech'; S.clients = r.clients || []; S.sites = r.sites || {}; save(); render(); syncAll(true);
+    S.code = c; S.name = r.name; S.role = r.role || 'tech'; S.clients = r.clients || []; S.sites = r.sites || {}; save(); render(); syncAll(true); restoreMine(true);
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 function renderHome() {
@@ -210,7 +210,26 @@ function refreshLists() {
   if (!navigator.onLine) return toast('مفيش نت');
   toast('⏳ بيحدّث…');
   api({ action: 'login', code: S.code }).then(function (r) { if (r.ok) { S.clients = r.clients || []; S.sites = r.sites || {}; save(); toast('✅ القوايم اتحدثت'); } }).catch(function () {});
-  syncAll(true);
+  syncAll(true); restoreMine(false);
+}
+/** الفني دخل من موبايل تاني: نرجّعله صباته الشغالة من السيرفر */
+function restoreMine(announce) {
+  if (S.role === 'sup' || !navigator.onLine) return;
+  api({ action: 'open', code: S.code }).then(function (r) {
+    if (!r || !r.ok) return;
+    var mine = (r.open || []).filter(function (o) { return o.owner === S.name && !S.reports[o.repId]; });
+    if (!mine.length) return;
+    var n = 0;
+    (function next() {
+      if (!mine.length) { save(); if (view === 'home') render(); if (n && announce !== null) toast('✅ رجعتلك ' + n + ' صبة شغالة من السيرفر'); return; }
+      var o = mine.shift();
+      api({ action: 'takeover', code: S.code, repId: o.repId }).then(function (t) {
+        if (t && t.ok) { var now = Date.now(); S.reports[o.repId] = { id: o.repId, created: t.created || now, sid: t.sid, data: t.data, updatedAt: now, syncedAt: now, lastPing: 0 };
+          if (S.order.indexOf(o.repId) < 0) S.order.push(o.repId); n++; }
+        next();
+      }).catch(next);
+    })();
+  }).catch(function () {});
 }
 function delReport(id) {
   var r = S.reports[id]; if (!r) return;
@@ -521,8 +540,10 @@ function showOpen() {
   api({ action: 'open', code: S.code }).then(function (r) {
     if (!r.ok) return toast('❌ ' + (r.error || ''));
     var list = r.open || [];
-    var h = '<div class="card"><h3>🔁 الصبات الشغالة دلوقتي</h3>' + (list.length ? '' : '<p class="muted">مفيش صبات شغالة</p>') + '</div><div class="card list" style="padding:0">' +
+    var h = '<div class="card"><h3>🔁 الصبات الشغالة دلوقتي</h3>' + (list.length ? '' : '<p class="muted">مفيش صبات شغالة على السيرفر.<br>الصبة بتوصل للسيرفر بعد ما الفني يضيف أول عربية، وموبايله يكون عليه نت.</p>') + '</div><div class="card list" style="padding:0">' +
       list.map(function (o) {
+        if (o.owner === S.name) return '<div class="it" onclick="restoreMine();toast(\'⏳ …\');setTimeout(goHome,2500)"><div><b>' + esc(o.client) + '</b> · ' + esc(o.element) +
+          '<br><span class="muted">صبتك أنت · ' + o.trucks + ' عربية</span></div><span class="st f">رجّعها ←</span></div>';
         return '<div class="it" onclick="takeOver(\'' + o.repId + '\',\'' + esc(o.owner).replace(/'/g, '') + '\')"><div><b>' + esc(o.client) + '</b> · ' + esc(o.element) +
           '<br><span class="muted">مع ' + esc(o.owner) + ' · ' + o.trucks + ' عربية' + (o.last ? ' · آخر تسجيل ' + esc(o.last) : '') + '</span></div><span class="st s">استلام ←</span></div>';
       }).join('') + '</div><div style="padding:10px"><button class="btn l" onclick="goHome()">رجوع</button></div>';
