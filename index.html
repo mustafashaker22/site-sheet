@@ -359,12 +359,17 @@ function renderAlerts() {
 }
 function timeCell(i, k, lab, emoji) {
   var r = cur.data.rows[i], v = r[k];
+  if (!v && k === 'exit') return '<div class="tm"><label>' + lab + '</label><input type="time" title="اكتب الوقت المطبوع في البون" onchange="setT(' + i + ',\'exit\',this.value);renderReport()"><div class="muted" style="font-size:12px">من البون</div></div>';
   if (!v) return '<div class="tm"><label>' + lab + '</label><button class="now" onclick="stamp(' + i + ',\'' + k + '\')">' + emoji + ' الآن</button>' +
     '<input type="time" title="لو بتسجل متأخر اكتب الوقت الحقيقي" style="margin-top:4px;font-size:14px;padding:5px" onchange="setT(' + i + ',\'' + k + '\',this.value);renderReport()"></div>';
   return '<div class="tm"><label>' + lab + '</label><input type="time" value="' + esc(v) + '" onchange="setT(' + i + ',\'' + k + '\',this.value)"></div>';
 }
 function stamp(i, k) { cur.data.rows[i][k] = nowHM(); touch(); renderReport(); }
-function setT(i, k, v) { cur.data.rows[i][k] = v || null; touch(); renderAlerts(); }
+function setT(i, k, v) {
+  var r = cur.data.rows[i];
+  if (k === 'exit' && v && r.arrival && v > r.arrival && !confirm('وقت الخروج ' + v + ' بعد وقت الوصول ' + r.arrival + '. متأكد؟')) { renderReport(); return; }
+  r[k] = v || null; touch(); renderAlerts();
+}
 function brokenLocal(id) { var b = (cur.data.broken || []).filter(function (y) { return y.dispatch_id === id; })[0]; return b ? b.note : ''; }
 function broke(id) {
   var x = (cur.incoming || []).filter(function (y) { return y.id === id; })[0]; if (!x) return;
