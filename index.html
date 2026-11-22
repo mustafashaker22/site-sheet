@@ -147,7 +147,7 @@ function syncAll(force) {
         r.syncedAt = sentAt; r.lastPing = Date.now(); r.sid = res.sid;
         if (r.final && res.final) { r.closedSynced = true; delete r.signature; }
         liveMsgs[r.id] = res.live || [];
-        if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites;
+        if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists;
         r.incoming = res.incoming || [];
       } else if (res && res.handedOver) { r.handedTo = res.owner; save(); toast('🔁 الصبة دي اتسلمت لـ ' + res.owner); }
       else if (res && res.auth === false) { toast('❌ الكود اتوقف — كلم المدير'); }
@@ -189,7 +189,7 @@ function login() {
   toast('⏳ بيتأكد…');
   api({ action: 'login', code: c }).then(function (r) {
     if (!r.ok) return toast('❌ ' + (r.error || 'الكود غلط'));
-    S.code = c; S.name = r.name; S.role = r.role || 'tech'; S.clients = r.clients || []; S.sites = r.sites || {}; if (r.silos) S.siloSt = r.silos; if (r.mixes) S.mixes = r.mixes; if (r.siloWarn) S.siloWarn = r.siloWarn; save(); render(); syncAll(true); restoreMine(true);
+    S.code = c; S.name = r.name; S.role = r.role || 'tech'; S.clients = r.clients || []; S.sites = r.sites || {}; if (r.lists) S.lists = r.lists; if (r.silos) S.siloSt = r.silos; if (r.mixes) S.mixes = r.mixes; if (r.siloWarn) S.siloWarn = r.siloWarn; save(); render(); syncAll(true); restoreMine(true);
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 function renderHome() {
@@ -211,7 +211,7 @@ function renderHome() {
 function refreshLists() {
   if (!navigator.onLine) return toast('مفيش نت');
   toast('⏳ بيحدّث…');
-  api({ action: 'login', code: S.code }).then(function (r) { if (r.ok) { S.clients = r.clients || []; S.sites = r.sites || {}; if (r.silos) S.siloSt = r.silos; if (r.mixes) S.mixes = r.mixes; save(); toast('✅ القوايم اتحدثت'); } }).catch(function () {});
+  api({ action: 'login', code: S.code }).then(function (r) { if (r.ok) { S.clients = r.clients || []; S.sites = r.sites || {}; if (r.lists) S.lists = r.lists; if (r.silos) S.siloSt = r.silos; if (r.mixes) S.mixes = r.mixes; save(); toast('✅ القوايم اتحدثت'); } }).catch(function () {});
   syncAll(true); restoreMine(false);
 }
 /** الفني دخل من موبايل تاني: نرجّعله صباته الشغالة من السيرفر */
@@ -262,6 +262,36 @@ function setP(el) {
   if (v === '') v = null;
   o[k] = v; touch();
 }
+
+// ===================== قوايم الاختيار =====================
+function L(k) { return ((S.lists || {})[k] || []).map(function (x) { return typeof x === 'object' ? x.t : String(x); }); }
+function selF(path, lab, val, opts, attrs) {
+  var v = val == null ? '' : String(val), o = opts.slice(); if (v && o.indexOf(v) < 0) o.unshift(v);
+  var dis = /disabled/.test(attrs || '') ? ' disabled' : '';
+  return '<div><label>' + lab + '</label><select data-p="' + path + '" data-lab="' + esc(lab) + '"' + (/data-n/.test(attrs || '') ? ' data-n' : '') + dis + ' onchange="pickSel(this)">' +
+    '<option value="">— اختار —</option>' + o.map(function (x) { return '<option' + (x === v ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') +
+    '<option value="__o">✏️ حاجة مش في القايمة…</option></select></div>';
+}
+function pickSel(el) {
+  var v = el.value, p = el.getAttribute('data-p');
+  if (v === '__o') { v = prompt(el.getAttribute('data-lab') || ''); if (v === null) return rerender(); v = v.trim(); }
+  var ps = p.split('.'), o = cur.data; for (var i = 0; i < ps.length - 1; i++) o = o[ps[i]];
+  var k = ps[ps.length - 1];
+  if (el.getAttribute('data-n') !== null && v !== '' && !isNaN(Number(v))) v = Number(v);
+  o[k] = v === '' ? null : v;
+  if (k === 'grade_strength') { var pr = ((S.lists || {}).pairs || []).filter(function (x) { return x[0] === String(v); }); if (pr.length === 1) o.cement_content = Number(pr[0][1]) || pr[0][1]; }
+  if (k === 'truck') { var dl = lastDriver(String(v)); if (dl) o.driver = dl; }
+  touch(); rerender();
+}
+/** السواق: آخر واحد اشتغل على العربية دي (النهارده/امبارح)، ولو مفيش يبقى اللي في شيت القوايم */
+function lastDriver(t) {
+  var best = null, bt = 0;
+  (S.disp || []).concat(S.dispToday || []).forEach(function (d) { if (d.truck === t && d.driver && !d.cancelled && (d.ts || 1) >= bt) { best = d.driver; bt = d.ts || 1; } });
+  Object.keys(S.reports || {}).forEach(function (id) { var r = S.reports[id]; ((r.data || {}).rows || []).forEach(function (x) { if (x.truck === t && x.driver && (r.updatedAt || 0) > bt && Date.now() - (r.updatedAt || 0) < 2 * 86400000) { best = x.driver; bt = r.updatedAt; } }); });
+  if (best) return best;
+  var l = ((S.lists || {}).trucks || []).filter(function (x) { return x.t === t; })[0]; return l && l.d;
+}
+function rerender() { var y = window.scrollY; if (view === 'head') renderHeader(); else render(); window.scrollTo(0, y); }
 function siteList() {
   var out = [];
   Object.keys(S.sites || {}).forEach(function (k) { (S.sites[k] || []).forEach(function (x) { if (out.indexOf(x) < 0) out.push(x); }); });
@@ -299,10 +329,10 @@ function renderHeader() {
   document.getElementById('app').innerHTML = '<div class="card"><h3>بيانات الصبة</h3>' +
     clientSelects(h.client, h.site, 'pickHead') +
     '<div class="g2" style="margin-top:8px">' + fld('header.element', 'العنصر المصبوب', h.element) +
-    fld('header.grade_strength', 'الإجهاد', h.grade_strength, 'inputmode="numeric" data-n') + fld('header.cement_content', 'الأسمنت', h.cement_content, 'inputmode="numeric" data-n') +
+    selF('header.grade_strength', 'الإجهاد', h.grade_strength, L('grades'), 'data-n') + selF('header.cement_content', 'الأسمنت', h.cement_content, L('cements'), 'data-n') +
     fld('header.qty_required_m3', 'الكمية المطلوبة م³', h.qty_required_m3, 'inputmode="decimal" data-n') + fld('header.date', 'التاريخ', h.date, 'type="date"') +
     '<div><label>طريقة الصب</label><select data-p="header.pour_method" onchange="setP(this)">' + ['مضخة', 'مزراب'].map(function (x) { return '<option' + (h.pour_method === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
-    fld('header.pump_id', 'رقم المضخة', h.pump_id) + fld('header.operator', 'المشغل', h.operator) + fld('header.site_manager', 'مسئول الموقع', h.site_manager) +
+    selF('header.pump_id', 'رقم المضخة', h.pump_id, L('pumps')) + selF('header.operator', 'المشغل', h.operator, L('operators')) + fld('header.site_manager', 'مسئول الموقع', h.site_manager) +
     fld('header.distance_km', 'المسافة كم', h.distance_km, 'inputmode="decimal" data-n') + '</div></div>' +
     '<div class="bar">' + (!(cur.data.rows || []).length ? '<button class="btn l" style="width:32%" onclick="cancelNew()">✕ إلغاء</button>' : '') + '<button class="btn g big" onclick="if(!cur.data.header.client){toast(\'اختار العميل\');return}view=\'rep\';render();syncAll(true)">التالي ← العربيات</button></div>';
 }
@@ -475,7 +505,7 @@ function renderReport() {
     var st = r.diverted ? '<span class="badge y">اتحولت</span>' : r.end ? '<span class="badge g">✓ خلصت</span>' : r.start ? '<span class="badge g">▶ بتصب</span>' : r.arrival ? '<span class="badge">⏳ ' + since(r.arrival) + ' د</span>' : '';
     // أحداث بعد العربية اللي قبلها
     html += '<div class="card' + (r.end ? ' done' : '') + '"><h3><span>🚛 عربية ' + (i + 1) + ' ' + st + '</span>' + (ro ? '' : '<button class="mini del" onclick="delTruck(' + i + ')">حذف</button>') + '</h3>' +
-      '<div class="g3">' + fld('rows.' + i + '.truck', 'رقم العربية', r.truck, 'placeholder="T12"' + dis) + fld('rows.' + i + '.driver', 'السائق', r.driver, dis) + fld('rows.' + i + '.qty_m3', 'الكمية م³', r.qty_m3, 'inputmode="decimal" data-n' + dis) + '</div>' +
+      '<div class="g3">' + selF('rows.' + i + '.truck', 'رقم العربية', r.truck, L('trucks'), dis) + selF('rows.' + i + '.driver', 'السائق', r.driver, L('drivers'), dis) + fld('rows.' + i + '.qty_m3', 'الكمية م³', r.qty_m3, 'inputmode="decimal" data-n' + dis) + '</div>' +
       '<div class="g4" style="margin-top:8px">' + timeCell(i, 'exit', 'خروج (من البون)', '🚚') + timeCell(i, 'arrival', 'وصول', '📍') + timeCell(i, 'start', 'بداية الصب', '▶️') + timeCell(i, 'end', 'نهاية الصب', '⏹') + '</div>' +
       '<div class="g4" style="margin-top:8px">' + fld('rows.' + i + '.slump', 'الهبوط' + (r.exit_slump != null ? ' (خروج ' + esc(r.exit_slump) + ')' : ''), r.slump, 'inputmode="decimal" data-n' + dis) + fld('rows.' + i + '.temp', 'الحرارة', r.temp, 'inputmode="decimal"' + dis) +
       fld('rows.' + i + '.additive_l', 'إضافة (لتر)', r.additive_l, 'inputmode="decimal" data-n' + dis) + fld('rows.' + i + '.note', 'ملاحظة', r.note, dis) + '</div>' +
@@ -590,7 +620,7 @@ function syncProd(force) {
     if (res && res.ok) {
       pend.forEach(function (d) { d.synced = true; });
       S.prodToday = res.today || []; if (res.silos) S.siloSt = res.silos; S.silos = S.silos || {}; S.prodToday.forEach(function (o) { if (!+o.adj && o.silo && o.cement_type) S.silos[String(o.silo).trim()] = { cement_type: o.cement_type, source: o.source || '' }; }); S.mixes = res.mixes || S.mixes || []; if (res.prodUrl) S.prodUrl = res.prodUrl;
-      if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.techs) S.techs = res.techs;
+      if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists; if (res.techs) S.techs = res.techs;
       save(); if (view === 'prod' && !prodForm) renderProd(); else setNet();
     } else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
   }).catch(function () { setNet(); });
@@ -781,7 +811,7 @@ function syncDispatch(force) {
   api({ action: 'dispatch', code: S.code, items: pend }).then(function (res) {
     syncing = false;
     if (S.disp.some(function (d) { return !d.synced && pend.indexOf(d) < 0; })) setTimeout(function () { syncDispatch(false); }, 300);
-    if (res && res.ok) { pend.forEach(function (d) { d.synced = true; }); S.dispToday = res.today || []; if (res.silos) S.siloSt = res.silos; if (res.siloWarn) S.siloWarn = res.siloWarn; if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.techs) S.techs = res.techs; if (res.plantUrl) S.plantUrl = res.plantUrl; save(); if (!supForm && view !== 'pours' && view !== 'pour') render(); else setNet(); }
+    if (res && res.ok) { pend.forEach(function (d) { d.synced = true; }); S.dispToday = res.today || []; if (res.silos) S.siloSt = res.silos; if (res.siloWarn) S.siloWarn = res.siloWarn; if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists; if (res.techs) S.techs = res.techs; if (res.plantUrl) S.plantUrl = res.plantUrl; save(); if (!supForm && view !== 'pours' && view !== 'pour') render(); else setNet(); }
     else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
   }).catch(function () { syncing = false; setNet(); });
 }
@@ -855,18 +885,31 @@ function renderSupForm() {
   var opts = S.clients.map(function (c) { return '<option value="' + esc(c) + '">'; }).join('');
   document.getElementById('app').innerHTML = '<div class="card"><h3>🚚 خروج عربية</h3>' +
     clientSelects(f.client, f.site, 'pickSup') +
-    '<div class="g2" style="margin-top:8px">' + inp('truck', 'رقم العربية', 'placeholder="T12"') + inp('driver', 'السائق') +
+    '<div class="g2" style="margin-top:8px">' + supSel('truck', 'رقم العربية', L('trucks')) + supSel('driver', 'السائق', L('drivers')) +
     inp('qty_m3', 'الكمية م³', 'inputmode="decimal"') + inp('exit_slump', 'معدل الهبوط', 'inputmode="decimal"') +
     inp('temp', 'الحرارة', 'inputmode="decimal"') + inp('samples', 'عدد العينات', 'inputmode="numeric"') +
     '<div><label>فني الموقع</label><input list="techs" value="' + esc(f.site_tech) + '" oninput="sf(\'site_tech\',this.value)"><datalist id="techs">' + (S.techs || []).map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist></div>' +
     '<div><label>وقت الخروج</label><input type="time" value="' + esc(f.exit) + '" onchange="sf(\'exit\',this.value)"></div>' +
-    inp('grade', 'الرتبة', 'placeholder="300/400"') + inp('ticket', 'رقم البون', 'inputmode="numeric"') +
+    supSel('grade', 'الرتبة', (S.mixes || []).map(function (m) { return m.code; })) + inp('ticket', 'رقم البون', 'inputmode="numeric"') +
     '<div><label>السايلو</label><input list="silosD" value="' + esc(f.silo || '') + '" onchange="sf(\'silo\',this.value.trim());renderSupForm()"><datalist id="silosD">' + (S.siloSt || []).map(function (x) { return '<option value="' + esc(x.silo) + '">'; }).join('') + '</datalist></div><div></div></div>' +
     dispSiloNote(f) +
     inp('sup_note', 'ملاحظات') + (isEdit ? '<p class="center"><a href="#" style="color:#c0392b" onclick="cancelDispatch();return false">إلغاء العربية دي (اتسجلت بالغلط)</a></p>' : '') + '</div>' +
     '<div class="bar"><button class="btn l" style="width:30%" onclick="supForm=null;render()">رجوع</button>' +
     (isEdit ? '<button class="btn l" style="width:30%" onclick="markBroken()">🛠 عطلت</button>' : '') +
     '<button class="btn g" onclick="saveDispatch()">✅ ' + (isEdit ? 'حفظ' : 'خرجت') + '</button></div>';
+}
+
+function supSel(k, lab, opts) {
+  var v = supForm[k] == null ? '' : String(supForm[k]), o = opts.slice(); if (v && o.indexOf(v) < 0) o.unshift(v);
+  return '<div><label>' + lab + '</label><select data-lab="' + esc(lab) + '" onchange="supPick(\'' + k + '\',this)"><option value="">— اختار —</option>' +
+    o.map(function (x) { return '<option' + (x === v ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '<option value="__o">✏️ حاجة مش في القايمة…</option></select></div>';
+}
+function supPick(k, el) {
+  var v = el.value;
+  if (v === '__o') { v = prompt(el.getAttribute('data-lab') || ''); if (v === null) return renderSupForm(); v = v.trim(); }
+  supForm[k] = v;
+  if (k === 'truck') { var dl = lastDriver(v); if (dl) supForm.driver = dl; }
+  var y = window.scrollY; renderSupForm(); window.scrollTo(0, y);
 }
 function saveDispatch() {
   var f = supForm;
