@@ -44,6 +44,7 @@ button{font-family:inherit;font-size:calc(17px * var(--z,1));border:0;border-rad
 .ev{border-right:4px solid var(--y)}
 .done{opacity:.75}
 #sigWrap{position:fixed;inset:0;background:#000a;display:none;z-index:20;align-items:center;justify-content:center}
+#sigBox{max-height:94vh;overflow:auto}
 #sigBox{background:#fff;border-radius:12px;padding:12px;width:94%;max-width:520px}
 #sig{width:100%;height:200px;border:2px dashed #999;border-radius:8px;touch-action:none;background:#fff}
 .toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:10px;z-index:30;font-size:14px;display:none}
@@ -59,6 +60,7 @@ body.zbig .g3{grid-template-columns:repeat(2,1fr)}
 <div id="sigWrap"><div id="sigBox">
   <h3 style="margin:4px 0 8px">✍️ إمضاء الفني</h3>
   <div class="muted" id="sigWho"></div>
+  <div id="sigFoot"></div>
   <label style="margin-top:8px">امضي هنا بصباعك</label>
   <canvas id="sig" width="1000" height="400"></canvas>
   <div class="g3" style="margin-top:8px"><button class="btn l" onclick="sigClear()">مسح</button><button class="btn l" onclick="sigClose()">رجوع</button><button class="btn g" onclick="finish()">✅ إنهاء وإرسال</button></div>
@@ -149,7 +151,7 @@ function syncAll(force) {
         liveMsgs[r.id] = res.live || [];
         if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists;
         r.incoming = res.incoming || [];
-      } else if (res && res.handedOver) { r.handedTo = res.owner; save(); toast('🔁 الصبة دي اتسلمت لـ ' + res.owner); }
+      } else if (res && res.handedOver && !sameName(res.owner, S.name)) { r.handedTo = res.owner; save(); toast('🔁 الصبة دي اتسلمت لـ ' + res.owner); }
       else if (res && res.auth === false) { toast('❌ الكود اتوقف — كلم المدير'); }
       else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
       next();
@@ -197,6 +199,7 @@ function renderHome() {
   var items = S.order.slice().reverse().map(function (id) {
     var r = S.reports[id]; if (!r) return '';
     var hd = r.data.header || {}, n = (r.data.rows || []).length;
+    if (r.handedTo && sameName(r.handedTo, S.name)) { delete r.handedTo; save(); }
     var st = r.handedTo ? '<span class="st s">🔁 اتسلمت لـ ' + esc(r.handedTo) + '</span>' : r.closedSynced ? '<span class="st f">✅ خلصت واتبعتت</span>' : r.final ? '<span class="st p">⏳ خلصت — مستنية نت</span>' :
       (!n && !r.sid ? '<span class="st s">📝 لسه فاضية</span>' : r.updatedAt > (r.syncedAt || 0) ? '<span class="st p">⏳ شغالة — مستنية نت</span>' : '<span class="st s">🟢 شغالة</span>');
     var canDel = !r.final && !r.closedSynced && !r.handedTo && !n;
@@ -479,6 +482,7 @@ function endEvent(j) { cur.data.events[j].to = nowHM(); touch(); renderReport();
 function delEvent(j) { if (confirm('تمسح الحدث؟')) { cur.data.events.splice(j, 1); touch(); renderReport(); } }
 
 function renderReport() {
+  if (cur.handedTo && sameName(cur.handedTo, S.name)) { delete cur.handedTo; save(); }
   var d = cur.data, h = d.header, ro = cur.final || !!cur.handedTo;
   var html = '<div class="card" onclick="' + (ro ? '' : 'view=\'head\';render()') + '" style="cursor:pointer"><h3><span>' + esc(h.client) + (h.site ? ' — ' + esc(h.site) : '') + '</span><span class="muted">' + (ro ? '' : '✏️ تعديل') + '</span></h3>' +
     '<div class="muted">' + esc(h.element || '') + ' · ' + esc(h.grade_strength || '') + (h.cement_content ? '/' + esc(h.cement_content) : '') + ' · ' + esc(h.date) + ' · ' + esc(h.pour_method || '') + ' ' + esc(h.pump_id || '') + '</div></div>';
@@ -495,7 +499,7 @@ function renderReport() {
       '<button class="btn g mini" onclick="arrived(\'' + x.id + '\')">📍 وصلت</button></div></div>';
   }).join('') + '</div>';
   var srv = (liveMsgs[cur.id] || []); if (srv.length && !ro) html += '<div class="alert y">📡 من السيرفر:<br>' + srv.map(esc).join('<br>') + '</div>';
-  if (cur.handedTo) html += '<div class="alert y">🔁 الصبة دي اتسلمت لـ <b>' + esc(cur.handedTo) + '</b> وهو اللي بيكمّلها.</div>';
+  if (cur.handedTo) html += '<div class="alert y">🔁 الصبة دي اتسلمت لـ <b>' + esc(cur.handedTo) + '</b> وهو اللي بيكمّلها.<br><button class="btn l mini" style="margin-top:6px" onclick="takeOver(\'' + cur.id + '\',\'' + esc(cur.handedTo).replace(/'/g, '') + '\')">↩ أنا اللي هكمّل — استلمها تاني</button></div>';
   else if (ro) html += '<div class="alert y">' + (cur.closedSynced ? '✅ الصبة خلصت واتبعتت للمحطة.' : '⏳ الصبة خلصت وهتتبعت أول ما النت يرجع.') + '</div>';
   var total = 0;
   d.rows.forEach(function (r, i) {
@@ -592,7 +596,7 @@ function showOpen() {
     var list = r.open || [];
     var h = '<div class="card"><h3>🔁 الصبات الشغالة دلوقتي</h3>' + (list.length ? '' : '<p class="muted">مفيش صبات شغالة على السيرفر.<br>الصبة بتوصل للسيرفر بعد ما الفني يضيف أول عربية، وموبايله يكون عليه نت.</p>') + '</div><div class="card list" style="padding:0">' +
       list.map(function (o) {
-        if (o.owner === S.name) return '<div class="it" onclick="restoreMine();toast(\'⏳ …\');setTimeout(goHome,2500)"><div><b>' + esc(o.client) + '</b> · ' + esc(o.element) +
+        if (sameName(o.owner, S.name)) return '<div class="it" onclick="restoreMine();toast(\'⏳ …\');setTimeout(goHome,2500)"><div><b>' + esc(o.client) + '</b> · ' + esc(o.element) +
           '<br><span class="muted">صبتك أنت · ' + o.trucks + ' عربية</span></div><span class="st f">رجّعها ←</span></div>';
         return '<div class="it" onclick="takeOver(\'' + o.repId + '\',\'' + esc(o.owner).replace(/'/g, '') + '\')"><div><b>' + esc(o.client) + '</b> · ' + esc(o.element) +
           '<br><span class="muted">مع ' + esc(o.owner) + ' · ' + o.trucks + ' عربية' + (o.last ? ' · آخر تسجيل ' + esc(o.last) : '') + '</span></div><span class="st s">استلام ←</span></div>';
@@ -600,6 +604,7 @@ function showOpen() {
     view = 'open'; document.getElementById('app').innerHTML = h;
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
+function sameName(a, b) { function n(x) { return String(x || '').replace(/[\s\u200f\u200e\u0640]+/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه'); } return n(a) === n(b); }
 function takeOver(repId, owner) {
   if (!confirm('تستلم الصبة دي من ' + owner + '؟ هتكمّل أنت عليها ومش هيقدر يعدّل فيها بعد كده.')) return;
   api({ action: 'takeover', code: S.code, repId: repId }).then(function (r) {
@@ -938,15 +943,18 @@ function openSig() {
   if (!d.rows.length) return toast('مفيش عربيات');
   var open = d.rows.filter(function (r) { return !r.diverted && !r.end; }).length;
   if (open && !confirm(open + ' عربية لسه ملهاش وقت نهاية. تكمّل الإنهاء؟')) return;
-  if ((d.events.length || d.rows.some(function (r) { return r.diverted; })) && !d.footer.problems_text) {
-    alert('فيه أحداث (نقل مضخة / وقفة / عربية اتحولت). اكتب المشاكل في خانة «أي مشاكل حدثت بالموقع» الأول — دي اللي بتحمينا لو حصل خلاف.');
-    return;
-  }
+  var f = d.footer = d.footer || {};
+  var needP = d.events.length || d.rows.some(function (r) { return r.diverted; });
+  document.getElementById('sigFoot').innerHTML = '<div class="alert y" style="margin:8px 0">املا آخر الشيت قبل الإمضاء — بعد الإنهاء مش هينفع يتعدل.</div><div class="g2">' +
+    '<div><label>استخدام الهزاز *</label><select id="fVib" data-p="footer.vibrator" onchange="setP(this)">' +
+    [['', '— اختار —'], ['done', 'تم'], ['not_done', 'لم يتم'], ['poor', 'ليس بصورة جيدة'], ['other', 'أخرى']].map(function (o) { return '<option value="' + o[0] + '"' + ((f.vibrator || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+    fld('footer.returned_concrete', 'خرسانة راجعة (م³)', f.returned_concrete, 'inputmode="decimal"') + fld('footer.waste_estimate', 'الهالك التقديري', f.waste_estimate) + '</div>' +
+    '<div style="margin-top:6px"><label>أي مشاكل حدثت بالموقع أثناء الصب' + (needP ? ' * (فيه أحداث)' : '') + '</label><textarea id="fProb" rows="2" data-p="footer.problems_text" oninput="setP(this)">' + esc(f.problems_text) + '</textarea></div>';
   document.getElementById('sigWrap').style.display = 'flex';
   document.getElementById('sigWho').textContent = 'الفني: ' + S.name + ' — امضي وبعدين «إنهاء وإرسال»';
   cv = document.getElementById('sig'); cx = cv.getContext('2d'); sigClear();
 }
-function sigClose() { document.getElementById('sigWrap').style.display = 'none'; }
+function sigClose() { document.getElementById('sigWrap').style.display = 'none'; if (cur && view === 'rep') renderReport(); }
 function sigClear() { cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.lineWidth = 6; cx.lineCap = 'round'; cx.strokeStyle = '#0b3d91'; hasInk = false; }
 function pos(ev) { var r = cv.getBoundingClientRect(), t = ev.touches ? ev.touches[0] : ev; return [(t.clientX - r.left) * cv.width / r.width, (t.clientY - r.top) * cv.height / r.height]; }
 function sigInit() {
@@ -958,6 +966,9 @@ function sigInit() {
   c.addEventListener('touchstart', down, { passive: false }); c.addEventListener('touchmove', move, { passive: false }); c.addEventListener('touchend', up);
 }
 function finish() {
+  var d = cur.data, f = d.footer || {};
+  if (!f.vibrator) { toast('اختار «استخدام الهزاز»'); document.getElementById('fVib').focus(); return; }
+  if ((d.events.length || d.rows.some(function (r) { return r.diverted; })) && !String(f.problems_text || '').trim()) { toast('فيه أحداث (نقل مضخة / وقفة / عربية اتحولت) — اكتب المشاكل'); document.getElementById('fProb').focus(); return; }
   if (!hasInk && !confirm('مفيش إمضاء. تكمّل من غير إمضاء؟')) return;
   cur.data.header.technician = cur.data.header.technician || S.name;
   cur.data.closed = true;
