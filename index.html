@@ -124,11 +124,11 @@ function syncAll(force) {
   // صبة فاضية لسه مش بتتسجل، بس نجيبلها العربيات الجاية
   S.order.forEach(function (id) {
     var r = S.reports[id];
-    if (!r || r.sid || r.final || r.handedTo || (r.data.rows || []).length || !r.data.header.client) return;
-    if (!force && Date.now() - (r.lastIncoming || 0) < 60000) return;
+    if (!r || r.final || r.handedTo || !r.data.header.client || ids.indexOf(id) >= 0) return;
+    if (!force && Date.now() - Math.max(r.lastIncoming || 0, r.lastPing || 0) < 60000) return;
     r.lastIncoming = Date.now();
     api({ action: 'incoming', code: S.code, client: r.data.header.client, site: r.data.header.site }).then(function (res) {
-      if (res && res.ok) { r.incoming = res.incoming || []; save(); if (view === 'rep' && cur === r) renderReport(); }
+      if (res && res.ok) { r.incoming = res.incoming || []; notifyNew(r); save(); if (view === 'rep' && cur === r) renderReport(); }
     }).catch(function () {});
   });
   if (!ids.length) return;
@@ -150,7 +150,7 @@ function syncAll(force) {
         if (r.final && res.final) { r.closedSynced = true; delete r.signature; }
         liveMsgs[r.id] = res.live || [];
         if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists;
-        r.incoming = res.incoming || [];
+        r.incoming = res.incoming || []; notifyNew(r);
       } else if (res && res.handedOver && !sameName(res.owner, S.name)) { r.handedTo = res.owner; save(); toast('🔁 الصبة دي اتسلمت لـ ' + res.owner); }
       else if (res && res.auth === false) { toast('❌ الكود اتوقف — كلم المدير'); }
       else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
@@ -176,6 +176,7 @@ function render() {
   if (view === 'head' && cur) return renderHeader();
   if (view === 'left' && cur && leftForm) return renderLeft();
   if (view === 'move' && cur && moveForm) return renderMove();
+  if (view === 'pump' && cur && pumpForm) return renderPump();
   renderHome();
 }
 function renderNoApi() {
@@ -194,8 +195,29 @@ function login() {
     S.code = c; S.name = r.name; S.role = r.role || 'tech'; S.clients = r.clients || []; S.sites = r.sites || {}; if (r.lists) S.lists = r.lists; if (r.silos) S.siloSt = r.silos; if (r.mixes) S.mixes = r.mixes; if (r.siloWarn) S.siloWarn = r.siloWarn; save(); render(); syncAll(true); restoreMine(true);
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
+/** عربية جديدة خرجت للفني: صوت/اهتزاز + إشعار على الموبايل */
+function notifyNew(r) {
+  r.seenInc = r.seenInc || {};
+  var first = !r.incInit; r.incInit = 1;
+  (r.incoming || []).forEach(function (x) {
+    if (r.seenInc[x.id]) return; r.seenInc[x.id] = 1;
+    if (first || x.broken) return;
+    var msg = 'عربية ' + (x.truck || '') + ' خرجت ' + (x.exit || '') + ' لـ ' + (r.data.header.client || '') + ' — ' + (x.qty_m3 || '') + ' م³' + (x.grade ? ' ' + x.grade : '');
+    toast('🚚 ' + msg);
+    try { navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]); } catch (e) {}
+    try {
+      if (window.Notification && Notification.permission === 'granted' && navigator.serviceWorker)
+        navigator.serviceWorker.ready.then(function (reg) { reg.showNotification('🚚 عربية جاية', { body: msg, tag: x.id, renotify: true, vibrate: [400, 150, 400], icon: 'icon-192.png', lang: 'ar', dir: 'rtl' }); });
+    } catch (e) {}
+  });
+}
+function askNotif() {
+  if (!window.Notification) return toast('الموبايل ده مش بيدعم الإشعارات من المتصفح');
+  Notification.requestPermission().then(function (p) { toast(p === 'granted' ? '✅ الإشعارات اشتغلت' : '❌ الإشعارات اترفضت — فعّلها من إعدادات المتصفح'); render(); });
+}
 function renderHome() {
-  var h = '<div style="padding:10px" class="g2"><button class="btn g big" onclick="newReport()">➕ صبة جديدة</button><button class="btn big" onclick="showOpen()">🔁 استلام صبة شغالة</button></div>';
+  var h = '<div style="padding:10px" class="g2"><button class="btn g big" onclick="newReport()">➕ صبة جديدة</button><button class="btn big" onclick="showOpen()">🔁 استلام صبة شغالة</button></div>' +
+    (window.Notification && Notification.permission === 'default' ? '<div style="padding:0 10px 8px"><button class="btn l" style="width:100%" onclick="askNotif()">🔔 فعّل إشعار العربيات الجاية</button></div>' : '');
   var items = S.order.slice().reverse().map(function (id) {
     var r = S.reports[id]; if (!r) return '';
     var hd = r.data.header || {}, n = (r.data.rows || []).length;
@@ -489,7 +511,7 @@ function delEvent(j) { if (confirm('تمسح الحدث؟')) { cur.data.events.s
 function renderReport() {
   if (cur.handedTo && sameName(cur.handedTo, S.name)) { delete cur.handedTo; save(); }
   var d = cur.data, h = d.header, ro = cur.final || !!cur.handedTo;
-  var html = '<div class="card" onclick="' + (ro ? '' : 'view=\'head\';render()') + '" style="cursor:pointer"><h3><span>' + esc(h.client) + (h.site ? ' — ' + esc(h.site) : '') + '</span><span class="muted">' + (ro ? '' : '✏️ تعديل') + '</span></h3>' +
+  var html = '<div class="card" onclick="' + (ro ? '' : 'view=\'head\';render()') + '" style="cursor:pointer"><h3><span>' + esc(h.client) + (h.site ? ' — ' + esc(h.site) : '') + '</span>' + (ro ? '' : '<span class="btn l mini" style="white-space:nowrap">✏️ تعديل البيانات</span>') + '</h3>' +
     '<div class="muted">' + esc(h.element || '') + ' · ' + esc(h.grade_strength || '') + (h.cement_content ? '/' + esc(h.cement_content) : '') + ' · ' + esc(h.date) + ' · ' + esc(h.pour_method || '') + ' ' + esc(h.pump_id || '') + '</div></div>';
   html += '<datalist id="els">' + elementsUsed().map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
   html += '<div id="alerts"></div>';
@@ -526,7 +548,7 @@ function renderReport() {
   d.events.forEach(function (e, j) { if (!e.after_row) html += evCard(e, j, ro); });
   if (!ro) {
     html += '<div style="padding:0 10px"><button class="btn big" onclick="addTruck()">➕ عربية جديدة وصلت</button></div>';
-    html += '<div class="g3" style="padding:10px"><button class="btn l" onclick="addEvent(\'pump_move\')">🔧 نقل مضخة</button><button class="btn l" onclick="addEvent(\'stop\')">⏸ وقفة / مشكلة</button><button class="btn l" onclick="addEvent(\'other\')">📝 ملاحظة</button></div>';
+    html += '<div class="g3" style="padding:10px"><button class="btn l" onclick="newPump()">🔧 نقل مضخة</button><button class="btn l" onclick="addEvent(\'stop\')">⏸ وقفة / مشكلة</button><button class="btn l" onclick="addEvent(\'other\')">📝 ملاحظة</button></div>';
   }
   var f = d.footer, dis2 = ro ? ' disabled' : '';
   html += '<div class="card"><h3>آخر الشيت</h3><div class="g2"><div><label>استخدام الهزاز</label><select data-p="footer.vibrator" onchange="setP(this)"' + dis2 + '>' +
@@ -573,7 +595,7 @@ function evCard(e, j, ro) {
       (e.to ? '<div class="tm"><label>إلى</label><input type="time" value="' + esc(e.to) + '" onchange="cur.data.events[' + j + '].to=this.value;touch()"' + dis + '></div>' :
         '<div class="tm"><label>إلى</label>' + (ro ? '' : '<button class="now" onclick="endEvent(' + j + ')">✅ خلص الآن</button>') + '</div>') + '</div>') +
     '<div style="margin-top:6px"><input value="' + esc(e.text) + '" placeholder="السبب / التفاصيل" oninput="cur.data.events[' + j + '].text=this.value;cur.data.events[' + j + '].cause=this.value;touch()"' + dis + '></div>' +
-    (e.type === 'pump_move' ? pumpElement(e, j, dis) : '') + '</div>';
+    (e.type === 'pump_move' && !e.client ? pumpElement(e, j, dis) : '') + '</div>';
 }
 /* نقل المضخة لعنصر تاني: العربيات اللي بعد النقل بتتحسب على العنصر الجديد */
 function pumpElement(e, j, dis) {
@@ -585,6 +607,66 @@ function pumpElement(e, j, dis) {
     '<input list="els" value="' + esc(e.element || '') + '" placeholder="مثلاً: سقف الدور التاني" oninput="cur.data.events[' + j + '].element=this.value.trim()||null;touch()"' + dis + '>' +
     '<div class="g2" style="margin-top:6px"><div><label>الإجهاد</label><input inputmode="numeric" value="' + esc(e.grade_strength) + '" oninput="cur.data.events[' + j + '].grade_strength=Number(this.value)||this.value||null;touch()"' + dis + '></div>' +
     '<div><label>الأسمنت</label><input inputmode="numeric" value="' + esc(e.cement_content) + '" oninput="cur.data.events[' + j + '].cement_content=Number(this.value)||this.value||null;touch()"' + dis + '></div></div></div>';
+}
+
+/* نقل المضخة: لعنصر تاني / نفس العنصر بجهد مختلف (نفس العميل) — أو لعميل تاني (شيت جديد) */
+var pumpForm = null;
+function newPump() {
+  var g = gradeAt(Math.max(0, cur.data.rows.length - 1)), h = cur.data.header;
+  pumpForm = { kind: 'same', cause: '', element: '', gs: g.gs, cc: g.cc, old: g, client: '', site: '', cElement: '', cgs: h.grade_strength || '', ccc: h.cement_content || '' };
+  view = 'pump'; render(); window.scrollTo(0, 0);
+}
+function pumpSel(k, lab, v, opts) {
+  v = v == null ? '' : String(v); var o = opts.slice(); if (v && o.indexOf(v) < 0) o.unshift(v);
+  return '<div><label>' + lab + '</label><select onchange="pumpForm.' + k + '=this.value;' + (k === 'gs' || k === 'cgs' ? 'pumpPair(\'' + k + '\');' : '') + 'renderPump()"><option value="">—</option>' +
+    o.map(function (x) { return '<option' + (x === v ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>';
+}
+function pumpPair(k) { var v = pumpForm[k], pr = ((S.lists || {}).pairs || []).filter(function (x) { return x[0] === String(v); }); if (pr.length === 1) pumpForm[k === 'gs' ? 'cc' : 'ccc'] = pr[0][1]; }
+function pickPumpC(k, v) { pumpForm[k] = v; renderPump(); }
+function renderPump() {
+  var f = pumpForm;
+  function inp(k, lab, attrs) { return '<div><label>' + lab + '</label><input value="' + esc(f[k]) + '" oninput="pumpForm[\'' + k + '\']=this.value" ' + (attrs || '') + '></div>'; }
+  var tab = function (k, t) { return '<button class="btn ' + (f.kind === k ? 'g' : 'l') + '" onclick="pumpForm.kind=\'' + k + '\';renderPump()">' + t + '</button>'; };
+  var html = '<div class="card"><h3>🔧 نقل المضخة</h3><p class="muted">المضخة اتنقلت فين؟</p><div class="g2">' + tab('same', 'نفس العميل') + tab('client', 'عميل تاني') + '</div>' +
+    '<div style="margin-top:8px">' + inp('cause', 'السبب / التفاصيل (اختياري)') + '</div>';
+  if (f.kind === 'same') {
+    var changed = String(f.gs || '') !== String(f.old.gs || '') || String(f.cc || '') !== String(f.old.cc || '');
+    html += '<datalist id="els">' + elementsUsed().map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>' +
+      '<div style="margin-top:8px"><label>العنصر بعد النقل (فاضي = نفس العنصر)</label><input list="els" value="' + esc(f.element) + '" oninput="pumpForm.element=this.value" placeholder="مثلاً: أعمدة الدور التاني"></div>' +
+      '<div class="g2" style="margin-top:8px">' + pumpSel('gs', 'الإجهاد', f.gs, L('grades')) + pumpSel('cc', 'الأسمنت', f.cc, L('cements')) + '</div>' +
+      (changed ? '<div class="alert y" style="margin-top:8px">⚠️ هيتسجل إن الجهد اتغير من ' + esc(f.old.gs || '؟') + '/' + esc(f.old.cc || '؟') + ' لـ ' + esc(f.gs || '؟') + '/' + esc(f.cc || '؟') + ' — العربيات الجاية هتتحسب على الجهد الجديد.</div>' : '');
+  } else {
+    html += '<p class="muted" style="margin-top:8px">الصبة دي هتخلص هنا، وهيتفتح سايت شيت جديد للعميل التاني بنفس المضخة والمشغل.</p>' + clientSelects(f.client, f.site, 'pickPumpC') +
+      '<div class="g2" style="margin-top:8px">' + inp('cElement', 'العنصر') + '<div></div>' + pumpSel('cgs', 'الإجهاد', f.cgs, L('grades')) + pumpSel('ccc', 'الأسمنت', f.ccc, L('cements')) + '</div>';
+  }
+  html += '</div><div class="bar"><button class="btn l" style="width:32%" onclick="pumpForm=null;view=\'rep\';render()">رجوع</button><button class="btn g" onclick="savePump()">✅ سجّل النقل</button></div>';
+  document.getElementById('app').innerHTML = html;
+}
+function savePump() {
+  var f = pumpForm, d = cur.data, h = d.header, t = nowHM(), num = function (v) { return Number(v) || v || null; };
+  if (f.kind === 'same') {
+    var el = String(f.element || '').trim(), changed = String(f.gs || '') !== String(f.old.gs || '') || String(f.cc || '') !== String(f.old.cc || '');
+    var txt = [f.cause, el ? 'النقل لـ ' + el : '', changed ? 'تم تغيير الجهد من ' + (f.old.gs || '؟') + '/' + (f.old.cc || '؟') + ' لـ ' + (f.gs || '؟') + '/' + (f.cc || '؟') : ''].filter(Boolean).join(' — ');
+    var ev = { type: 'pump_move', type_ar: 'نقل المضخة', from: t, to: null, after_row: d.rows.length || null, text: txt, cause: f.cause || '', _askEl: 1 };
+    ev.element = el || null;
+    ev.grade_strength = num(f.gs); ev.cement_content = num(f.cc);
+    d.events.push(ev);
+    pumpForm = null; touch(); view = 'rep'; render(); return;
+  }
+  if (!f.client) return toast('اختار العميل');
+  var who = f.client + (f.site ? ' — ' + f.site : '');
+  d.events.push({ type: 'pump_move', type_ar: 'نقل المضخة لعميل تاني', from: t, to: null, after_row: d.rows.length || null, client: f.client,
+    text: (f.cause ? f.cause + ' — ' : '') + 'المضخة اتنقلت لـ ' + who + (f.cElement ? ' (' + f.cElement + ')' : '') + ' — الصبة دي خلصت هنا', cause: f.cause || '' });
+  touch();
+  var id = uid(), now = Date.now();
+  S.reports[id] = { id: id, created: now, updatedAt: now, data: {
+    header: { date: today(), technician: S.name, pour_method: h.pour_method || 'مضخة', pump_id: h.pump_id || null, operator: h.operator || null,
+      client: f.client, site: f.site || null, element: f.cElement || null, grade_strength: num(f.cgs), cement_content: num(f.ccc) },
+    rows: [], events: [{ type: 'other', type_ar: 'ملاحظة', from: null, to: null, after_row: null, text: 'المضخة جاية من صبة ' + (h.client || '') + (h.site ? ' — ' + h.site : '') + ' الساعة ' + t }], footer: {} } };
+  S.order.push(id); save(); pumpForm = null;
+  if (confirm('✅ اتسجل النقل واتفتح سايت شيت جديد لـ ' + f.client + '.\n\nتنهي الصبة الحالية (' + (h.client || '') + ') وتمضي دلوقتي؟\n(لو لأ، تقدر تنهيها بعدين من الرئيسية)')) { view = 'rep'; render(); openSig(); }
+  else { cur = S.reports[id]; view = 'rep'; render(); window.scrollTo(0, 0); }
+  syncAll(false);
 }
 
 // ===================== تسليم واستلام الصبة بين الفنيين =====================

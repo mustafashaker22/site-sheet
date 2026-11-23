@@ -1,5 +1,5 @@
 // يخلي التطبيق يفتح من غير نت. غيّر الرقم ده مع كل نسخة جديدة.
-var V = 'site-sheet-v31';
+var V = 'site-sheet-v33';
 var FILES = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(V).then(function (c) { return c.addAll(FILES); })); self.skipWaiting(); });
 self.addEventListener('activate', function (e) {
@@ -12,4 +12,11 @@ self.addEventListener('fetch', function (e) {
   e.respondWith(fetch(e.request).then(function (r) {
     var cp = r.clone(); caches.open(V).then(function (c) { c.put(e.request, cp); }); return r;
   }).catch(function () { return caches.match(e.request, { ignoreSearch: true }).then(function (r) { return r || caches.match('index.html'); }); }));
+});
+self.addEventListener('notificationclick', function (e) {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (cs) {
+    for (var i = 0; i < cs.length; i++) if ('focus' in cs[i]) return cs[i].focus();
+    return self.clients.openWindow('./');
+  }));
 });
