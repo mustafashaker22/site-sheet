@@ -381,11 +381,33 @@ function renderAlerts() {
 }
 function timeCell(i, k, lab, emoji) {
   var r = cur.data.rows[i], v = r[k];
-  if (!v && k === 'exit') return '<div class="tm"><label>' + lab + '</label><input type="time" title="اكتب الوقت المطبوع في البون" onchange="setT(' + i + ',\'exit\',this.value);renderReport()"><div class="muted" style="font-size:12px">من البون</div></div>';
+  if (!v && k === 'exit') return '<div class="tm"><label>' + lab + '</label><input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" data-t autocomplete="off" title="اكتب الوقت المطبوع في البون" onchange="setT(' + i + ',\'exit\',this.value);renderReport()"><div class="muted" style="font-size:12px">من البون</div></div>';
   if (!v) return '<div class="tm"><label>' + lab + '</label><button class="now" onclick="stamp(' + i + ',\'' + k + '\')">' + emoji + ' الآن</button>' +
-    '<input type="time" title="لو بتسجل متأخر اكتب الوقت الحقيقي" style="margin-top:4px;font-size:14px;padding:5px" onchange="setT(' + i + ',\'' + k + '\',this.value);renderReport()"></div>';
-  return '<div class="tm"><label>' + lab + '</label><input type="time" value="' + esc(v) + '" onchange="setT(' + i + ',\'' + k + '\',this.value)"></div>';
+    '<input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" data-t autocomplete="off" title="لو بتسجل متأخر اكتب الوقت الحقيقي" style="margin-top:4px;font-size:14px;padding:5px" onchange="setT(' + i + ',\'' + k + '\',this.value);renderReport()"></div>';
+  return '<div class="tm"><label>' + lab + '</label><input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" data-t autocomplete="off" value="' + esc(v) + '" onchange="setT(' + i + ',\'' + k + '\',this.value)"></div>';
 }
+
+/* الوقت 24 ساعة: الفني يكتب 1430 أو 14:30 أو 930 → بيتظبط لوحده */
+function fixT(v) {
+  var d = String(v || '').replace(/[٠-٩]/g, function (c) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(c); }).replace(/[^\d:]/g, '');
+  if (!d) return '';
+  var mm = d.match(/^(\d{1,2}):(\d{2})$/), m;
+  d = d.replace(/:/g, '');
+  if (mm) m = mm; else if (d.length <= 2) m = [0, d, '0']; else if (d.length <= 4) m = [0, d.slice(0, d.length - 2), d.slice(-2)]; else return null;
+  var h = +m[1], mi = +m[2]; if (h > 23 || mi > 59) return null;
+  return (h < 10 ? '0' : '') + h + ':' + (mi < 10 ? '0' : '') + mi;
+}
+document.addEventListener('input', function (e) {
+  var t = e.target; if (!t.hasAttribute || !t.hasAttribute('data-t')) return;
+  var d = t.value.replace(/[٠-٩]/g, function (c) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(c); }).replace(/[^\d]/g, '').slice(0, 4);
+  t.value = d.length > 2 ? d.slice(0, 2) + ':' + d.slice(2) : d;
+}, true);
+document.addEventListener('change', function (e) {
+  var t = e.target; if (!t.hasAttribute || !t.hasAttribute('data-t')) return;
+  var f = fixT(t.value);
+  if (f === null) { toast('⚠️ الوقت غلط — اكتبه 24 ساعة، مثلاً 14:30 أو 09:05'); t.value = ''; return; }
+  t.value = f;
+}, true);
 function stamp(i, k) { cur.data.rows[i][k] = nowHM(); touch(); renderReport(); }
 function setT(i, k, v) {
   var r = cur.data.rows[i];
@@ -591,8 +613,8 @@ function byElement() {
 function evCard(e, j, ro) {
   var dis = ro ? ' disabled' : '';
   return '<div class="card ev"><h3><span>★ ' + esc(e.type_ar) + '</span>' + (ro ? '' : '<button class="mini del" onclick="delEvent(' + j + ')">حذف</button>') + '</h3>' +
-    (e.type === 'other' || e.type === 'element_move' || e.type === 'leftover' || e.type === 'breakdown' || e.type === 'handover' ? '' : '<div class="g2">' + '<div class="tm"><label>من</label><input type="time" value="' + esc(e.from) + '" onchange="cur.data.events[' + j + '].from=this.value;touch()"' + dis + '></div>' +
-      (e.to ? '<div class="tm"><label>إلى</label><input type="time" value="' + esc(e.to) + '" onchange="cur.data.events[' + j + '].to=this.value;touch()"' + dis + '></div>' :
+    (e.type === 'other' || e.type === 'element_move' || e.type === 'leftover' || e.type === 'breakdown' || e.type === 'handover' ? '' : '<div class="g2">' + '<div class="tm"><label>من</label><input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" data-t autocomplete="off" value="' + esc(e.from) + '" onchange="cur.data.events[' + j + '].from=this.value;touch()"' + dis + '></div>' +
+      (e.to ? '<div class="tm"><label>إلى</label><input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" data-t autocomplete="off" value="' + esc(e.to) + '" onchange="cur.data.events[' + j + '].to=this.value;touch()"' + dis + '></div>' :
         '<div class="tm"><label>إلى</label>' + (ro ? '' : '<button class="now" onclick="endEvent(' + j + ')">✅ خلص الآن</button>') + '</div>') + '</div>') +
     '<div style="margin-top:6px"><input value="' + esc(e.text) + '" placeholder="السبب / التفاصيل" oninput="cur.data.events[' + j + '].text=this.value;cur.data.events[' + j + '].cause=this.value;touch()"' + dis + '></div>' +
     (e.type === 'pump_move' && !e.client ? pumpElement(e, j, dis) : '') + '</div>';
@@ -875,7 +897,7 @@ function renderSiloForm() {
     inp('tons', jard ? 'الموجود فعلاً (طن)' : 'الكمية (طن)', 'inputmode="decimal"') +
     '<div><label>المصنع</label><input list="srcs" value="' + esc(f.source) + '" oninput="siloForm.source=this.value" placeholder="سينا / العريش"><datalist id="srcs">' + Object.keys(srcs).map(function (k) { return '<option value="' + esc(k) + '">'; }).join('') + '</datalist></div>' +
     '<div><label>نوع الأسمنت</label><input list="ctypes" value="' + esc(f.type) + '" oninput="siloForm.type=this.value" placeholder="OPC / SRC"><datalist id="ctypes">' + Object.keys(types).concat(['OPC', 'SRC']).filter(function (v, i, a) { return a.indexOf(v) === i; }).map(function (k) { return '<option value="' + esc(k) + '">'; }).join('') + '</datalist></div>' +
-    '<div><label>التاريخ</label><input type="date" value="' + esc(f.date) + '" onchange="siloForm.date=this.value"></div><div><label>الوقت (وقت التفريغ في السايلو)</label><input type="time" value="' + esc(f.time) + '" onchange="siloForm.time=this.value"></div>' +
+    '<div><label>التاريخ</label><input type="date" value="' + esc(f.date) + '" onchange="siloForm.date=this.value"></div><div><label>الوقت (وقت التفريغ في السايلو)</label><input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" data-t autocomplete="off" value="' + esc(f.time) + '" onchange="siloForm.time=this.value"></div>' +
     (jard ? '' : inp('bill', 'رقم البوليصة / الكارتة', 'inputmode="numeric"')) + '</div>' + inp('note', 'ملاحظات') + '</div>' +
     '<div class="bar"><button class="btn l" style="width:32%" onclick="siloForm=null;renderSilo()">رجوع</button><button class="btn g" onclick="saveSiloForm()">✅ حفظ</button></div>';
   document.getElementById('app').innerHTML = h;
@@ -981,7 +1003,7 @@ function renderSupForm() {
     inp('qty_m3', 'الكمية م³', 'inputmode="decimal"') + inp('exit_slump', 'معدل الهبوط', 'inputmode="decimal"') +
     inp('temp', 'الحرارة', 'inputmode="decimal"') + inp('samples', 'عدد العينات', 'inputmode="numeric"') +
     '<div><label>فني الموقع</label><input list="techs" value="' + esc(f.site_tech) + '" oninput="sf(\'site_tech\',this.value)"><datalist id="techs">' + (S.techs || []).map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist></div>' +
-    '<div><label>وقت الخروج</label><input type="time" value="' + esc(f.exit) + '" onchange="sf(\'exit\',this.value)"></div>' +
+    '<div><label>وقت الخروج</label><input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" data-t autocomplete="off" value="' + esc(f.exit) + '" onchange="sf(\'exit\',this.value)"></div>' +
     supSel('grade', 'الرتبة', (S.mixes || []).map(function (m) { return m.code; })) + inp('ticket', 'رقم البون', 'inputmode="numeric"') +
     '<div><label>السايلو</label><input list="silosD" value="' + esc(f.silo || '') + '" onchange="sf(\'silo\',this.value.trim());renderSupForm()"><datalist id="silosD">' + (S.siloSt || []).map(function (x) { return '<option value="' + esc(x.silo) + '">'; }).join('') + '</datalist></div><div></div></div>' +
     dispSiloNote(f) +
