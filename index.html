@@ -543,7 +543,7 @@ function renderReport() {
   if (inc.length && !ro) html += '<div class="card" style="border-right:5px solid var(--b)"><h3>🚚 جاية من المحطة</h3>' + inc.map(function (x) {
     var br = x.broken || brokenLocal(x.id);
     return '<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee"><div><b>' + esc(x.truck) + '</b> · ' + esc(x.qty_m3 || '') + ' م³' +
-      (br ? ' <span class="badge">🛠 عطلانة</span>' : '') + (x.otherSite ? ' <span class="badge y">لموقع: ' + esc(x.otherSite) + '</span>' : '') + '<br><span class="muted">خرجت ' + esc(x.exit) + ' (' + since(x.exit) + ' د)' + (x.exit_slump ? ' · هبوط ' + esc(x.exit_slump) : '') + ' · ' + esc(x.driver || '') + (br ? ' · ' + esc(br) : '') + '</span></div>' +
+      (br ? ' <span class="badge">🛠 عطلانة</span>' : '') + (x.otherSite ? ' <span class="badge y">لموقع: ' + esc(x.otherSite) + '</span>' : '') + '<br><span class="muted">خرجت ' + esc(x.exit) + ' (' + since(x.exit) + ' د)' + ' · ' + esc(x.driver || '') + (br ? ' · ' + esc(br) : '') + '</span></div>' +
       '<div style="display:flex;gap:4px">' + (br ? '' : '<button class="btn l mini" onclick="broke(\'' + x.id + '\')">🛠</button>') +
       '<button class="btn g mini" onclick="arrived(\'' + x.id + '\')">📍 وصلت</button></div></div>';
   }).join('') + '</div>';
@@ -560,7 +560,7 @@ function renderReport() {
     html += '<div class="card' + (r.end ? ' done' : '') + '"><h3><span>🚛 عربية ' + (i + 1) + ' ' + st + '</span>' + (ro ? '' : '<button class="mini del" onclick="delTruck(' + i + ')">حذف</button>') + '</h3>' +
       '<div class="g3">' + selF('rows.' + i + '.truck', 'رقم العربية', r.truck, L('trucks'), dis) + selF('rows.' + i + '.driver', 'السائق', r.driver, L('drivers'), dis) + fld('rows.' + i + '.qty_m3', 'الكمية م³', r.qty_m3, 'inputmode="decimal" data-n' + dis) + '</div>' +
       '<div class="g4" style="margin-top:8px">' + timeCell(i, 'exit', 'خروج (من البون)', '🚚') + timeCell(i, 'arrival', 'وصول', '📍') + timeCell(i, 'start', 'بداية الصب', '▶️') + timeCell(i, 'end', 'نهاية الصب', '⏹') + '</div>' +
-      '<div class="g4" style="margin-top:8px">' + fld('rows.' + i + '.slump', 'الهبوط' + (r.exit_slump != null ? ' (خروج ' + esc(r.exit_slump) + ')' : ''), r.slump, 'inputmode="decimal" data-n' + dis) + fld('rows.' + i + '.temp', 'الحرارة', r.temp, 'inputmode="decimal"' + dis) +
+      '<div class="g4" style="margin-top:8px">' + fld('rows.' + i + '.slump', 'الهبوط', r.slump, 'inputmode="decimal" data-n' + dis) + fld('rows.' + i + '.temp', 'الحرارة', r.temp, 'inputmode="decimal"' + dis) +
       fld('rows.' + i + '.additive_l', 'إضافة (لتر)', r.additive_l, 'inputmode="decimal" data-n' + dis) + fld('rows.' + i + '.note', 'ملاحظة', r.note, dis) + '</div>' +
       (ro ? '' : '<div class="g2" style="margin-top:8px"><button class="btn l mini" style="width:100%" onclick="moveLine(' + i + ')">↪ الباقي لعنصر تاني</button>' +
         '<button class="btn l mini" style="width:100%" onclick="leftoverLine(' + i + ')">↩ الباقي لعميل تاني</button></div>') +
