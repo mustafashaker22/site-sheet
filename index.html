@@ -916,26 +916,37 @@ function admCards() {
       '<br><span class="muted">النهارده: توريد ' + a.inToday + ' كجم · صرف ' + a.outToday + ' كجم' + (a.siteToday ? ' (منها للموقع ' + a.siteToday + ')' : '') + ' · كثافة ' + a.dens + (a.last ? ' · آخر جرد ' + esc(a.last) : '') + '</span></div>';
   }).join('') + '</div>';
 }
-function newAdm() { var t = admTypeList(); admForm = { id: uid(), ts: Date.now(), kind: 'توريد', date: today(), time: nowHM(), type: t[0] || '', qty: '', unit: 'كجم', note: '' }; renderSilo(); }
+function newAdm(kind) { var t = admTypeList(); kind = kind || 'توريد'; admForm = { id: uid(), ts: Date.now(), kind: kind, date: today(), time: nowHM(), type: t[0] || '', qty: '', unit: kind === 'جرد' ? 'لتر' : 'كجم', note: '' }; renderSilo(); }
+function admType(v) {
+  if (v === '__new') {
+    var n = prompt('اسم نوع الإضافة الجديد:'); if (!n || !n.trim()) return renderAdmForm();
+    var d = prompt('الكثافة (كجم/لتر) من الداتا شيت — مثلاً 1.2:', '1.2'); d = Number(String(d || '').replace(',', '.'));
+    if (!d || d < 0.5 || d > 2.5) { toast('⚠️ الكثافة غلط — اكتبها زي 1.2'); return renderAdmForm(); }
+    v = n.trim(); S.admTypes = S.admTypes || {}; S.admTypes[v] = d; admForm.newDens = d; save();
+  }
+  admForm.type = v; renderAdmForm();
+}
 function renderAdmForm() {
   var f = admForm, t = admTypeList(); if (f.type && t.indexOf(f.type) < 0) t.unshift(f.type);
   var conv = +f.qty ? (f.unit === 'كجم' ? ' = ' + Math.round(+f.qty / dens(f.type) * 10) / 10 + ' لتر' : ' = ' + Math.round(+f.qty * dens(f.type) * 10) / 10 + ' كجم') : '';
-  document.getElementById('app').innerHTML = '<div class="card"><h3>🧴 توريد إضافات</h3><div class="g2">' +
-    '<div><label>نوع الإضافة</label><select onchange="admForm.type=this.value;renderAdmForm()">' + t.map(function (x) { return '<option' + (x === f.type ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>' +
+  var jard = f.kind === 'جرد', book = ((S.admix || []).filter(function (a) { return a.type === f.type; })[0] || {});
+  document.getElementById('app').innerHTML = '<div class="card"><h3>' + (jard ? '📏 تصحيح رصيد إضافة' : '🧴 توريد إضافات') + '</h3>' +
+    (jard ? '<p class="muted">اكتب الموجود فعلاً في التنك. الدفتري دلوقتي: <b>' + (book.l != null ? book.l + ' لتر (' + book.kg + ' كجم)' : '—') + '</b></p>' : '') + '<div class="g2">' +
+    '<div><label>نوع الإضافة</label><select onchange="admType(this.value)">' + t.map(function (x) { return '<option' + (x === f.type ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '<option value="__new">➕ نوع جديد…</option></select></div>' +
     '<div><label>الوحدة</label><select onchange="admForm.unit=this.value;renderAdmForm()"><option' + (f.unit === 'كجم' ? ' selected' : '') + '>كجم</option><option' + (f.unit === 'لتر' ? ' selected' : '') + '>لتر</option></select></div>' +
-    '<div><label>الكمية</label><input inputmode="decimal" value="' + esc(f.qty) + '" onchange="admForm.qty=this.value;renderAdmForm()"></div>' +
+    '<div><label>' + (jard ? 'الموجود فعلاً' : 'الكمية') + '</label><input inputmode="decimal" value="' + esc(f.qty) + '" onchange="admForm.qty=this.value;renderAdmForm()"></div>' +
     '<div><label>الوقت</label><input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" data-t value="' + esc(f.time) + '" onchange="admForm.time=this.value"></div></div>' +
     '<p class="muted">الكثافة ' + dens(f.type) + ' كجم/لتر' + conv + '</p><div><label>ملاحظات / رقم الفاتورة</label><input value="' + esc(f.note) + '" oninput="admForm.note=this.value"></div></div>' +
     '<div class="bar"><button class="btn l" style="width:32%" onclick="admForm=null;renderSilo()">رجوع</button><button class="btn g" onclick="saveAdmForm()">✅ حفظ</button></div>';
 }
 function saveAdmForm() {
   var f = admForm, q = Number(String(f.qty).replace(',', '.'));
-  if (!f.type) return toast('اكتب أنواع الإضافات في شيت «الإضافات» الأول');
-  if (!q || q < 0) return toast('اكتب الكمية');
+  if (!f.type) return toast('اختار نوع الإضافة');
+  if (isNaN(q) || String(f.qty).trim() === '' || q < 0 || (!q && f.kind !== 'جرد')) return toast('اكتب الكمية');
   f.qty = q; admForm = null; renderSilo();
   api({ action: 'admix', code: S.code, items: [f] }).then(function (r) {
     if (!r || !r.ok) return toast('⚠️ ' + ((r && r.error) || 'مشكلة'));
-    S.siloSt = r.silos || S.siloSt; S.admix = r.admix || S.admix; if (r.admTypes) S.admTypes = r.admTypes; save(); toast('✅ اتسجل التوريد'); syncSilo(true);
+    S.siloSt = r.silos || S.siloSt; S.admix = r.admix || S.admix; if (r.admTypes) S.admTypes = r.admTypes; save(); toast(f.kind === 'جرد' ? '✅ الرصيد اتصحح' : '✅ اتسجل التوريد'); syncSilo(true);
   }).catch(function () { toast('⚠️ محتاج نت عشان التوريد يتسجل'); });
 }
 function newCount() {
@@ -987,7 +998,7 @@ function renderSilo() {
   if (siloForm) return renderSiloForm();
   var pend = (S.siloQ || []).filter(function (d) { return !d.synced; });
   var h = (countResult && Date.now() - countResult.at < 15 * 60000 ? countResult.html : '') + '<div style="padding:10px 10px 0"><button class="btn g big" style="width:100%" onclick="newCount()">📋 الجرد اليومي (كل الخامات)</button></div>' +
-    '<div style="padding:8px 10px" class="g3"><button class="btn l" onclick="newSilo(\'استلام\')">🚛 استلام أسمنت</button><button class="btn l" onclick="newAdm()">🧴 توريد إضافات</button><button class="btn l" onclick="newSilo(\'جرد\')">📏 تصحيح سايلو</button></div>' +
+    '<div style="padding:8px 10px" class="g2"><button class="btn l" onclick="newSilo(\'استلام\')">🚛 استلام أسمنت</button><button class="btn l" onclick="newSilo(\'جرد\')">📏 تصحيح سايلو</button><button class="btn l" onclick="newAdm(\'توريد\')">🧴 توريد إضافات</button><button class="btn l" onclick="newAdm(\'جرد\')">📏 تصحيح إضافة</button></div>' +
     siloCards(false) + admCards() + (pend.length ? '<p class="center muted">⏳ ' + pend.length + ' حركة مستنية نت</p>' : '') +
     '<div class="card"><h3>آخر الحركات</h3>' + (siloMoves.length ? siloMoves.map(function (m) {
       return '<div style="border-bottom:1px solid #eee;padding:6px 0">' + (m.kind === 'جرد' ? '📏 جرد' : (m.adm ? '🧴 توريد' : '🚛 استلام')) + ' — ' + (m.adm ? '' : 'سايلو ') + esc(m.silo) + ': <b>' + m.tons + ' ' + (m.unit || 'طن') + '</b> ' + esc((m.source || '') + ' ' + (m.type || '')) +
