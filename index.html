@@ -127,7 +127,7 @@ function syncAll(force) {
     if (!r || r.final || r.handedTo || !r.data.header.client || ids.indexOf(id) >= 0) return;
     if (!force && Date.now() - Math.max(r.lastIncoming || 0, r.lastPing || 0) < 60000) return;
     r.lastIncoming = Date.now();
-    api({ action: 'incoming', code: S.code, client: r.data.header.client, site: r.data.header.site }).then(function (res) {
+    api({ action: 'incoming', code: S.code, client: r.data.header.client, site: r.data.header.site, since: r.created || 0 }).then(function (res) {
       if (res && res.ok) { r.incoming = res.incoming || []; notifyNew(r); save(); if (view === 'rep' && cur === r) renderReport(); }
     }).catch(function () {});
   });
@@ -196,11 +196,25 @@ function login() {
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 /** عربية جديدة خرجت للفني: صوت/اهتزاز + إشعار على الموبايل */
+/** العربية دي الفني كتبها بإيده قبل كده (مثلاً وهو من غير نت)؟ نفس الرقم + وقت خروج قريب */
+function tkey(t) { return String(t || '').toUpperCase().replace(/[\s\-_.]/g, '').replace(/^T(?=\d)/, ''); }
+function hm2m(t) { var m = /^(\d{1,2}):(\d{2})/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : null; }
+function typedAlready(rows, x) {
+  var xe = hm2m(x.exit);
+  return (rows || []).some(function (r) {
+    if (r.dispatch_id || r.diverted || tkey(r.truck) !== tkey(x.truck)) return false;
+    var re = hm2m(r.exit), ra = hm2m(r.arrival);
+    if (re !== null && xe !== null) return Math.abs(re - xe) <= 15;
+    if (ra !== null && xe !== null) return ra >= xe && ra - xe <= 240;
+    return false;
+  });
+}
 function notifyNew(r) {
   r.seenInc = r.seenInc || {};
   var first = !r.incInit; r.incInit = 1;
   (r.incoming || []).forEach(function (x) {
     if (r.seenInc[x.id]) return; r.seenInc[x.id] = 1;
+    if (typedAlready(r.data.rows, x)) return;
     if (first || x.broken) return;
     var msg = 'عربية ' + (x.truck || '') + ' خرجت ' + (x.exit || '') + ' لـ ' + (r.data.header.client || '') + ' — ' + (x.qty_m3 || '') + ' م³' + (x.grade ? ' ' + x.grade : '');
     toast('🚚 ' + msg);
@@ -539,7 +553,7 @@ function renderReport() {
   html += '<datalist id="els">' + elementsUsed().map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
   html += '<div id="alerts"></div>';
   var added = {}; d.rows.forEach(function (r) { if (r.dispatch_id) added[r.dispatch_id] = 1; });
-  var inc = (cur.incoming || []).filter(function (x) { return !added[x.id]; });
+  var inc = (cur.incoming || []).filter(function (x) { return !added[x.id] && !typedAlready(d.rows, x); });
   if (!ro && !inc.length) html += '<div class="muted" style="margin:6px 12px">🚚 مفيش عربيات متسجلة خارجة لـ «' + esc(h.client) + '» من المحطة لسه. <a href="#" onclick="cur.lastPing=0;syncAll(true);toast(\'⏳ بيدوّر…\');return false">🔄 دوّر تاني</a></div>';
   if (inc.length && !ro) html += '<div class="card" style="border-right:5px solid var(--b)"><h3>🚚 جاية من المحطة</h3>' + inc.map(function (x) {
     var br = x.broken || brokenLocal(x.id);
