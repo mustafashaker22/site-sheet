@@ -171,7 +171,7 @@ function render() {
   setNet();
   if (!S.api) return renderNoApi();
   if (!S.code) return renderLogin();
-  if (S.role === 'sup') { if (view === 'prod') return renderProd(); if (view === 'silo') return renderSilo(); if (view === 'rep13') return renderRep(); if (view === 'pours' || view === 'pour') view = 'home'; return renderSup(); }
+  if (S.role === 'sup') { if (view === 'prod') return renderProd(); if (view === 'silo') return renderSilo(); if (view === 'rep13') return renderProdRep(); if (view === 'pours' || view === 'pour') view = 'home'; return renderSup(); }
   if (view === 'rep' && cur) return renderReport();
   if (view === 'head' && cur) return renderHeader();
   if (view === 'left' && cur && leftForm) return renderLeft();
@@ -875,13 +875,13 @@ function dispSiloNote(f) {
 
 // ===================== تقرير الإنتاجية F-01-13 =====================
 var repData = null, repDate = null;
-function openRep() { view = 'rep13'; repDate = repDate || today(); repData = null; renderRep(); loadRep(); }
-function loadRep() {
-  if (!navigator.onLine) { repData = { err: 'محتاج نت' }; return renderRep(); }
-  api({ action: 'prodrep', code: S.code, date: repDate }).then(function (r) { repData = r && r.ok ? r : { err: (r && r.error) || 'مشكلة' }; if (view === 'rep13') renderRep(); }).catch(function () { repData = { err: 'مشكلة في النت' }; renderRep(); });
+function openProdRep() { view = 'rep13'; repDate = repDate || today(); repData = null; renderProdRep(); loadProdRep(); }
+function loadProdRep() {
+  if (!navigator.onLine) { repData = { err: 'محتاج نت' }; return renderProdRep(); }
+  api({ action: 'prodrep', code: S.code, date: repDate }).then(function (r) { repData = r && r.ok ? r : { err: (r && r.error) || 'مشكلة' }; if (view === 'rep13') renderProdRep(); }).catch(function () { repData = { err: 'مشكلة في النت' }; renderProdRep(); });
 }
-function renderRep() {
-  var h = '<div class="card"><h3>📊 الإنتاجية والاستهلاك</h3><div class="g2"><div><label>اليوم (من 12 بالليل لـ 12 بالليل)</label><input type="date" value="' + esc(repDate) + '" onchange="repDate=this.value;repData=null;renderRep();loadRep()"></div><div></div></div></div>';
+function renderProdRep() {
+  var h = '<div class="card"><h3>📊 الإنتاجية والاستهلاك</h3><div class="g2"><div><label>اليوم (من 12 بالليل لـ 12 بالليل)</label><input type="date" value="' + esc(repDate) + '" onchange="repDate=this.value;repData=null;renderProdRep();loadProdRep()"></div><div></div></div></div>';
   if (!repData) h += '<p class="center muted">… بيحسب</p>';
   else if (repData.err) h += '<p class="center" style="color:#c0392b">⚠️ ' + esc(repData.err) + '</p>';
   else {
@@ -1072,7 +1072,7 @@ function syncDispatch(force) {
 function renderSup() {
   if (supForm) return renderSupForm();
   var h = '<div style="padding:10px" class="g2"><button class="btn g big" onclick="newDispatch()">🚚 خروج عربية جديدة</button><button class="btn big" onclick="showPours()">🏗 الصبات في المواقع</button></div>' +
-    '<div style="padding:0 10px" class="g3"><button class="btn l" onclick="openProd()">🧪 الخلطات QC-F-25</button><button class="btn l" onclick="openSilo()">🏭 المخزون والجرد</button><button class="btn l" onclick="openRep()">📊 الإنتاجية</button></div>' + siloCards(true);
+    '<div style="padding:0 10px" class="g3"><button class="btn l" onclick="openProd()">🧪 الخلطات QC-F-25</button><button class="btn l" onclick="openSilo()">🏭 المخزون والجرد</button><button class="btn l" onclick="openProdRep()">📊 الإنتاجية</button></div>' + siloCards(true);
   var srv = {}; S.dispToday.forEach(function (d) { srv[d.id] = d; });
   var today = new Date().toDateString();
   var list = S.disp.filter(function (d) { return new Date(d.ts).toDateString() === today; }).slice().reverse();
