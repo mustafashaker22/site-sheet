@@ -874,16 +874,19 @@ function dispSiloNote(f) {
 }
 
 // ===================== تقرير الإنتاجية F-01-13 =====================
-var repData = null, repDate = null;
+var repData = null, repDate = null, repReq = 0;
 function openProdRep() { view = 'rep13'; repDate = repDate || today(); repData = null; renderProdRep(); loadProdRep(); }
 function loadProdRep() {
   if (!navigator.onLine) { repData = { err: 'محتاج نت' }; return renderProdRep(); }
-  api({ action: 'prodrep', code: S.code, date: repDate }).then(function (r) { repData = r && r.ok ? r : { err: (r && r.error) || 'مشكلة' }; if (view === 'rep13') renderProdRep(); }).catch(function () { repData = { err: 'مشكلة في النت' }; renderProdRep(); });
+  var my = repReq = Date.now(), done = false;
+  setTimeout(function () { if (!done && repReq === my && view === 'rep13') { repData = { err: 'السيرفر اتأخر أكتر من دقيقة — دوس «جرّب تاني»' }; renderProdRep(); } }, 60000);
+  api({ action: 'prodrep', code: S.code, date: repDate }).then(function (r) { done = true; if (repReq !== my) return; repData = r && r.ok ? r : { err: (r && r.error) || 'السيرفر رجّع رد غلط — اتأكد إن Code.gs الجديد اتنشر (إصدار جديد)' }; if (view === 'rep13') renderProdRep(); })
+    .catch(function () { done = true; if (repReq !== my) return; repData = { err: 'مشكلة في النت أو السيرفر — اتأكد إن Code.gs الجديد اتنشر' }; if (view === 'rep13') renderProdRep(); });
 }
 function renderProdRep() {
   var h = '<div class="card"><h3>📊 الإنتاجية والاستهلاك</h3><div class="g2"><div><label>اليوم (من 12 بالليل لـ 12 بالليل)</label><input type="date" value="' + esc(repDate) + '" onchange="repDate=this.value;repData=null;renderProdRep();loadProdRep()"></div><div></div></div></div>';
-  if (!repData) h += '<p class="center muted">… بيحسب</p>';
-  else if (repData.err) h += '<p class="center" style="color:#c0392b">⚠️ ' + esc(repData.err) + '</p>';
+  if (!repData) h += '<p class="center muted">… بيحسب (ممكن ياخد لحد نص دقيقة)</p>';
+  else if (repData.err) h += '<p class="center" style="color:#c0392b">⚠️ ' + esc(repData.err) + '</p><div style="padding:0 10px"><button class="btn l" style="width:100%" onclick="repData=null;renderProdRep();loadProdRep()">🔄 جرّب تاني</button></div>';
   else {
     var R = repData.rep;
     h += '<div class="card"><div class="g3" style="text-align:center"><div><div class="muted">إنتاج اليوم</div><b style="font-size:1.6em">' + R.total + '</b> م³</div><div><div class="muted">تراكمي الشهر</div><b style="font-size:1.6em">' + R.cum + '</b></div><div><div class="muted">متوسط اليوم</div><b style="font-size:1.6em">' + R.avg + '</b></div></div></div>' +
