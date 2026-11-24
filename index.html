@@ -446,11 +446,43 @@ document.addEventListener('change', function (e) {
   t.value = f;
 }, true);
 /* ترتيب العربيات بوقت الوصول (بيعدّي 12 بالليل صح)؛ الأحداث (نقل مضخة/تسليم/…) بتفضل بعد نفس العربية */
-function sortRows(d) {
+/* نفس العربية متسجلة مرتين بنفس وقت الخروج تقريباً = غالباً اختار رقم غلط من القايمة */
+/* العربية اتكتبت متأخر؟ (وقت الوصول اتكتب بالإيد بعد الوصول الفعلي بأكتر من 45 دقيقة) */
+function lateMin(r) {
+  if (!r || !r.arrAt || !r.arrival) return 0;
+  var a = new Date(r.arrAt), at = a.getHours() * 60 + a.getMinutes(), m = hm2m(r.arrival); if (m == null) return 0;
+  var d = (at - m + 1440) % 1440;
+  return d > 45 ? d : 0;
+}
+function lateTag(r) { var l = lateMin(r); if (!l) return ''; var a = new Date(r.arrAt); return '<span class="st p" style="background:#fdecea;color:#c0392b" title="اتكتبت متأخر">⏱ اتكتبت ' + ('0' + a.getHours()).slice(-2) + ':' + ('0' + a.getMinutes()).slice(-2) + ' (بعد ' + (l >= 60 ? Math.floor(l / 60) + ' س ' : '') + (l % 60) + ' د)</span>'; }
+function dupWarn(rows, i) {
+  var r = rows[i], m = hm2m(r.exit); if (!r.truck || m == null) return '';
+  var j = -1; rows.forEach(function (x, k) { if (k !== i && j < 0 && tkey(x.truck) === tkey(r.truck) && hm2m(x.exit) != null && Math.abs(hm2m(x.exit) - m) <= 10) j = k; });
+  return j < 0 ? '' : '<div class="alert y" style="margin:4px 0">⚠️ ' + esc(r.truck) + ' متسجلة كمان في عربية ' + (j + 1) + ' بنفس وقت الخروج تقريباً — اتأكد من رقم العربية من البون.</div>';
+}
+function dayNum(s) { var p = String(s || '').split('-'); return p.length === 3 ? Date.UTC(+p[0], +p[1] - 1, +p[2]) / 864e5 : 0; }
+function yday() { var d = new Date(Date.now() - 864e5); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+function sortRows(d, created) {
   var rows = d.rows || []; if (rows.length < 2) return false;
-  var ref = null; rows.forEach(function (r) { if (ref === null) ref = hm2m(r.arrival) != null ? hm2m(r.arrival) : hm2m(r.exit); });
-  function key(r) { var m = hm2m(r.arrival); if (m == null) return Infinity; if (ref != null && m < ref - 360) m += 1440; return m; }
-  var a = rows.map(function (r, i) { return { r: r, i: i, k: key(r) }; });
+  // بداية اليوم بتاع الصبة = وقت فتحها ناقص ساعتين؛ أي وقت قبله يبقى بعد 12 بالليل
+  var c = created ? new Date(created) : null, ref = c ? c.getHours() * 60 + c.getMinutes() - 120 : null;
+  if (ref == null) rows.forEach(function (r) { var m = hm2m(r.exit) != null ? hm2m(r.exit) : hm2m(r.arrival); if (m != null && (ref == null || m < ref)) ref = m; });
+  if (ref != null && ref < 0) ref += 1440;
+  var cd = c ? dayNum(c.getFullYear() + '-' + (c.getMonth() + 1) + '-' + c.getDate()) : 0;
+  // اليوم لكل عربية: معروف (arrDate) — وإلا من أقرب عربية قبلها/بعدها معروف يومها — وإلا من وقت فتح الصبة
+  var day = rows.map(function (r) { return r.arrDate && hm2m(r.arrival) != null ? dayNum(r.arrDate) : null; });
+  rows.forEach(function (r, i) {
+    var m = hm2m(r.arrival); if (m == null || day[i] != null) return;
+    var j = i - 1, k = i + 1;
+    while (j >= 0 && !(rows[j].arrDate && hm2m(rows[j].arrival) != null)) j--;
+    while (k < rows.length && !(rows[k].arrDate && hm2m(rows[k].arrival) != null)) k++;
+    var hasP = j >= 0, hasN = k < rows.length;
+    if (hasP && (!hasN || i - j <= k - i)) { var pm = hm2m(rows[j].arrival); day[i] = dayNum(rows[j].arrDate) + (m < pm - 360 ? 1 : 0); }
+    else if (hasN) { var nm = hm2m(rows[k].arrival); day[i] = dayNum(rows[k].arrDate) - (m > nm + 360 ? 1 : 0); }
+    else day[i] = cd + (ref != null && m < ref ? 1 : 0);
+  });
+  function key(r, i) { var m = hm2m(r.arrival); return m == null ? Infinity : day[i] * 1440 + m; }
+  var a = rows.map(function (r, i) { return { r: r, i: i, k: key(r, i) }; });
   a.sort(function (x, y) { return x.k - y.k || x.i - y.i; });
   if (a.every(function (x, j) { return x.i === j; })) return false;
   var ni = {}; a.forEach(function (x, j) { ni[x.i] = j; });
@@ -458,12 +490,13 @@ function sortRows(d) {
   d.rows = a.map(function (x) { return x.r; });
   return true;
 }
-function stamp(i, k) { cur.data.rows[i][k] = nowHM(); if (k === 'arrival') sortRows(cur.data); touch(); renderReport(); }
+function stamp(i, k) { cur.data.rows[i][k] = nowHM(); if (k === 'arrival') { delete cur.data.rows[i].arrAt; cur.data.rows[i].arrDate = today(); } if (k === 'arrival') sortRows(cur.data, cur.created); touch(); renderReport(); }
 function setT(i, k, v) {
   var r = cur.data.rows[i];
   if (k === 'exit' && v && r.arrival && v > r.arrival && !confirm('وقت الخروج ' + v + ' بعد وقت الوصول ' + r.arrival + '. متأكد؟')) { renderReport(); return; }
   r[k] = v || null;
-  if (k === 'arrival' && sortRows(cur.data)) { touch(); renderReport(); return; }
+  if (k === 'arrival' && v && !cur.mgrSid) { r.arrAt = Date.now(); r.arrDate = hm2m(v) <= hm2m(nowHM()) + 10 ? today() : yday(); }
+  if (k === 'arrival' && sortRows(cur.data, cur.created)) { touch(); renderReport(); return; }
   touch(); renderAlerts();
 }
 function brokenLocal(id) { var b = (cur.data.broken || []).filter(function (y) { return y.dispatch_id === id; })[0]; return b ? b.note : ''; }
@@ -486,7 +519,8 @@ function arrived(id) {
   var br = x.broken || brokenLocal(id);
   cur.data.rows.push({ truck: x.truck, driver: x.driver, qty_m3: Number(x.qty_m3) || x.qty_m3, exit: x.exit, arrival: nowHM(), dispatch_id: x.id, ticket: x.ticket || null, exit_slump: (x.exit_slump === '' || x.exit_slump == null) ? null : x.exit_slump,
     breakdown: br || null, note: br ? 'كانت عطلانة: ' + br : null });
-  sortRows(cur.data);
+  cur.data.rows[cur.data.rows.length - 1].arrDate = today();
+  sortRows(cur.data, cur.created);
   touch(); renderReport();
 }
 function addTruck() {
@@ -616,7 +650,8 @@ function renderReport() {
     var dis = ro ? ' disabled' : '';
     var st = r.diverted ? '<span class="badge y">اتحولت</span>' : r.end ? '<span class="badge g">✓ خلصت</span>' : r.start ? '<span class="badge g">▶ بتصب</span>' : r.arrival ? '<span class="badge">⏳ ' + since(r.arrival) + ' د</span>' : '';
     // أحداث بعد العربية اللي قبلها
-    html += '<div class="card' + (r.end ? ' done' : '') + '"><h3><span>🚛 عربية ' + (i + 1) + ' ' + st + '</span>' + (ro ? '' : '<button class="mini del" onclick="delTruck(' + i + ')">حذف</button>') + '</h3>' +
+    var dupW = dupWarn(d.rows, i) + (lateMin(r) ? '<div style="margin:2px 0">' + lateTag(r) + '</div>' : '');
+    html += '<div class="card' + (r.end ? ' done' : '') + '"><h3><span>🚛 عربية ' + (i + 1) + ' ' + st + '</span>' + (ro ? '' : '<button class="mini del" onclick="delTruck(' + i + ')">حذف</button>') + '</h3>' + dupW +
       '<div class="g3">' + selF('rows.' + i + '.truck', 'رقم العربية', r.truck, L('trucks'), dis) + selF('rows.' + i + '.driver', 'السائق', r.driver, L('drivers'), dis) + fld('rows.' + i + '.qty_m3', 'الكمية م³', r.qty_m3, 'inputmode="decimal" data-n' + dis) + '</div>' +
       '<div class="g4" style="margin-top:8px">' + timeCell(i, 'exit', 'خروج (من البون)', '🚚') + timeCell(i, 'arrival', 'وصول', '📍') + timeCell(i, 'start', 'بداية الصب', '▶️') + timeCell(i, 'end', 'نهاية الصب', '⏹') + '</div>' +
       '<div class="g4" style="margin-top:8px">' + fld('rows.' + i + '.slump', 'الهبوط', r.slump, 'inputmode="decimal" data-n' + dis) + fld('rows.' + i + '.temp', 'الحرارة', r.temp, 'inputmode="decimal"' + dis) +
@@ -996,8 +1031,11 @@ function mgrOpenPour(sid) {
   api({ action: 'pour', code: S.code, sid: sid }).then(function (r) {
     if (!r.ok) return toast('❌ ' + (r.error || ''));
     var id = 'mgr_' + sid, d = r.data || {}; d.header = d.header || {}; d.rows = d.rows || []; d.events = d.events || []; d.footer = d.footer || {};
-    S.reports[id] = { id: id, mgrSid: sid, mgrStatus: r.status, mgrOwner: r.owner, created: Date.now() - 6 * 3600000, updatedAt: 0, data: d };
-    cur = S.reports[id]; view = 'rep'; render(); window.scrollTo(0, 0);
+    var dd = r.ddates || {}; d.rows.forEach(function (x) { if (!x.arrDate && x.dispatch_id && dd[x.dispatch_id] && x.arrival) { var dt = dd[x.dispatch_id]; if (hm2m(x.arrival) < hm2m(x.exit || '00:00') - 60) { var q = new Date(Date.UTC(+dt.slice(0, 4), +dt.slice(5, 7) - 1, +dt.slice(8, 10)) + 864e5); dt = q.toISOString().slice(0, 10); } x.arrDate = dt; } });
+    var cr = d.header.date ? new Date(+d.header.date.slice(0, 4), +d.header.date.slice(5, 7) - 1, +d.header.date.slice(8, 10), 6, 0).getTime() : Date.now() - 6 * 3600000;
+    S.reports[id] = { id: id, mgrSid: sid, mgrStatus: r.status, mgrOwner: r.owner, created: cr, updatedAt: 0, data: d };
+    var moved = sortRows(d, cr);
+    cur = S.reports[id]; view = 'rep'; render(); window.scrollTo(0, 0); if (moved) toast('ℹ️ رتّبت العربيات بوقت الوصول — ادوس «💾 حفظ التعديل» لو موافق');
     if (d.header.client && r.status !== 'مأكد') api({ action: 'incoming', code: S.code, client: d.header.client, site: d.header.site, since: 0 }).then(function (x) { if (x && x.ok && cur === S.reports[id]) { cur.incoming = x.incoming || []; renderReport(); } });
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
@@ -1231,7 +1269,7 @@ function viewPour(sid) {
     h += '<div class="card" style="padding:6px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;text-align:center">' +
       '<tr style="background:#eef1f4"><th>#</th><th>عربية</th><th>م³</th><th>خروج</th><th>وصول</th><th>بداية</th><th>نهاية</th><th>هبوط</th><th>إضافة</th></tr>';
     rows.forEach(function (x, i) {
-      h += '<tr style="border-top:1px solid #ddd' + (x.diverted ? ';color:#999' : '') + '"><td>' + (i + 1) + '</td><td><b>' + esc(x.truck || '') + '</b></td><td>' + esc(x.qty_m3 || '') + '</td><td>' + esc(x.exit || '') +
+      h += '<tr style="border-top:1px solid #ddd' + (x.diverted ? ';color:#999' : '') + '"><td>' + (i + 1) + '</td><td><b>' + esc(x.truck || '') + '</b>' + (lateMin(x) ? ' <span style="color:#c0392b">⏱</span>' : '') + '</td><td>' + esc(x.qty_m3 || '') + '</td><td>' + esc(x.exit || '') +
         '</td><td>' + esc(x.arrival || '') + '</td><td>' + esc(x.start || '') + '</td><td>' + esc(x.end || '') + '</td><td>' + esc(x.slump == null ? '' : x.slump) + '</td><td>' + esc(x.additive_l || '') + '</td></tr>';
       ev.filter(function (e) { return +e.after_row === i + 1; }).forEach(function (e) {
         h += '<tr><td colspan="9" style="text-align:right;background:#fff8d6;font-size:13px">★ ' + esc(e.type_ar || '') + ' ' + esc(e.text || '') + '</td></tr>';
@@ -1363,6 +1401,9 @@ function isOldDay(r) {
   if (r && r.mgrSid) return false;
   if (!(r && !r.final && !r.handedTo && r.data.header.date && r.data.header.date < today() && (r.data.rows || []).length)) return false;
   if ((r.data.rows || []).some(function (x) { return !x.diverted && x.arrival && !x.end; })) return false;
+  var nm = hm2m(nowHM());
+  var recent = (r.data.rows || []).some(function (x) { return [x.end, x.start, x.arrival].some(function (t) { var m = hm2m(t); return m != null && (nm - m + 1440) % 1440 <= 240; }); });
+  if (recent) return false;   // فيه عربية اتصبت/وصلت آخر 4 ساعات = الصبة شغالة
   return Date.now() - (r.updatedAt || 0) > 4 * 3600000;
 }
 function askRoll() {
