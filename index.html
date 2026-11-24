@@ -167,10 +167,16 @@ function touch() { if (!cur) return; cur.updatedAt = Date.now(); save(); setNet(
 
 // ===================== الشاشات =====================
 function render() {
-  document.getElementById('who').textContent = S.name ? (S.role === 'sup' ? 'المشرف: ' : 'الفني: ') + S.name : '';
+  document.getElementById('who').textContent = S.name ? (S.mgr ? '👔 المدير: ' : S.role === 'sup' ? 'المشرف: ' : 'الفني: ') + S.name : '';
   setNet();
   if (!S.api) return renderNoApi();
   if (!S.code) return renderLogin();
+  if (S.role === 'sup' && cur && cur.mgrSid) {
+    if (view === 'rep') return renderReport(); if (view === 'head') return renderHeader();
+    if (view === 'left' && leftForm) return renderLeft(); if (view === 'move' && moveForm) return renderMove(); if (view === 'pump' && pumpForm) return renderPump();
+  }
+  if (S.mgr && view === 'act') return renderAct();
+  if (S.mgr && view === 'mdisp') return renderMDisp();
   if (S.role === 'sup') { if (view === 'prod') return renderProd(); if (view === 'silo') return renderSilo(); if (view === 'rep13') return renderProdRep(); if (view === 'pours' || view === 'pour') view = 'home'; return renderSup(); }
   if (view === 'rep' && cur) return renderReport();
   if (view === 'head' && cur) return renderHeader();
@@ -201,7 +207,7 @@ function login() {
   toast('⏳ بيتأكد…');
   api({ action: 'login', code: c }).then(function (r) {
     if (!r.ok) return toast('❌ ' + (r.error || 'الكود غلط'));
-    S.code = c; S.name = r.name; S.role = r.role || 'tech'; S.clients = r.clients || []; S.sites = r.sites || {}; if (r.lists) S.lists = r.lists; if (r.silos) S.siloSt = r.silos; if (r.admix) S.admix = r.admix; if (r.admTypes) S.admTypes = r.admTypes; if (r.mixes) S.mixes = r.mixes; if (r.siloWarn) S.siloWarn = r.siloWarn; save(); render(); syncAll(true); restoreMine(true);
+    S.code = c; S.name = r.name; S.role = r.role || 'tech'; S.mgr = !!r.mgr; S.clients = r.clients || []; S.sites = r.sites || {}; if (r.lists) S.lists = r.lists; if (r.silos) S.siloSt = r.silos; if (r.admix) S.admix = r.admix; if (r.admTypes) S.admTypes = r.admTypes; if (r.mixes) S.mixes = r.mixes; if (r.siloWarn) S.siloWarn = r.siloWarn; save(); render(); syncAll(true); restoreMine(true);
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 /** عربية جديدة خرجت للفني: صوت/اهتزاز + إشعار على الموبايل */
@@ -574,6 +580,7 @@ function renderReport() {
       '<button class="btn g mini" onclick="arrived(\'' + x.id + '\')">📍 وصلت</button></div></div>';
   }).join('') + '</div>';
   var srv = (liveMsgs[cur.id] || []); if (srv.length && !ro) html += '<div class="alert y">📡 من السيرفر:<br>' + srv.map(esc).join('<br>') + '</div>';
+  if (cur.mgrSid) html += '<div class="alert y">👔 <b>وضع المدير</b> — صبة #' + cur.mgrSid + ' بتاعة ' + esc(cur.mgrOwner || '') + (cur.mgrStatus === 'مأكد' ? ' (خلصت)' : ' (شغالة)') + '. ده نفس اللي الفني شايفه. أي تعديل مش بيتحفظ غير لما تدوس «💾 حفظ التعديل».' + (cur.mgrStatus !== 'مأكد' ? '<br>⚠️ الفني لسه شغال عليها — لو عدّل من موبايله بعدك، تعديله هو اللي هيفضل.' : '') + '</div>';
   if (isOldDay(cur)) html += '<div class="alert r">📅 الصبة دي بتاريخ ' + esc(cur.data.header.date) + '. الصبات بتتقفل كل يوم من 12 بالليل لـ 12 بالليل.<br><button class="btn g" style="width:100%;margin-top:6px" onclick="askRoll()">✍️ اقفلها وافتح صبة النهارده لنفس الموقع</button></div>';
   if (cur.handedTo) html += '<div class="alert y">🔁 الصبة دي اتسلمت لـ <b>' + esc(cur.handedTo) + '</b> وهو اللي بيكمّلها.<br><button class="btn l mini" style="margin-top:6px" onclick="takeOver(\'' + cur.id + '\',\'' + esc(cur.handedTo).replace(/'/g, '') + '\')">↩ أنا اللي هكمّل — استلمها تاني</button></div>';
   else if (ro) html += '<div class="alert y">' + (cur.closedSynced ? '✅ الصبة خلصت واتبعتت للمحطة.' : '⏳ الصبة خلصت وهتتبعت أول ما النت يرجع.') + '</div>';
@@ -605,7 +612,8 @@ function renderReport() {
     fld('footer.returned_concrete', 'خرسانة راجعة', f.returned_concrete, dis2) + fld('footer.waste_estimate', 'الهالك التقديري', f.waste_estimate, dis2) + '</div>' +
     '<div style="margin-top:8px"><label>أي مشاكل حدثت بالموقع أثناء الصب</label><textarea rows="2" data-p="footer.problems_text" oninput="setP(this)"' + dis2 + '>' + esc(f.problems_text) + '</textarea></div>' +
     '<p class="muted">إجمالي اللي اتصب: <b>' + total + ' م³</b>' + (h.qty_required_m3 ? ' من ' + esc(h.qty_required_m3) : '') + ' · ' + d.rows.length + ' عربية</p>' + byElement() + '</div>';
-  html += '<div class="bar"><button class="btn l" style="width:35%" onclick="goHome()">🏠 الرئيسية</button>' +
+  if (cur.mgrSid) html += '<div class="bar"><button class="btn l" style="width:35%" onclick="var s=cur.mgrSid;delete S.reports[cur.id];cur=null;viewPour(s)">✕ رجوع من غير حفظ</button><button class="btn g" onclick="mgrSavePour()">💾 حفظ التعديل</button></div>';
+  else html += '<div class="bar"><button class="btn l" style="width:35%" onclick="goHome()">🏠 الرئيسية</button>' +
     (ro ? '' : '<button class="btn l" style="width:30%" onclick="handOver()">🔁 تسليم</button><button class="btn g" onclick="openSig()">✍️ إنهاء الصبة</button>') + '</div>';
   document.getElementById('app').innerHTML = html;
   renderAlerts();
@@ -914,6 +922,72 @@ function renderProdRep() {
   h += '<div style="padding:10px"><button class="btn l" style="width:100%" onclick="view=\'home\';render()">رجوع</button></div>';
   document.getElementById('app').innerHTML = h;
 }
+// ===================== المدير =====================
+var actItems = null, mdispItems = null, mdispDate = null;
+function mgrBar() {
+  return '<div style="padding:8px 10px 0" class="g2"><button class="btn l" style="background:#efe7fb" onclick="openAct()">📜 سجل النشاط</button><button class="btn l" style="background:#efe7fb" onclick="openMDisp()">🚚 كل خروج اليوم</button></div>';
+}
+function openAct() { view = 'act'; actItems = null; renderAct(); api({ action: 'activity', code: S.code }).then(function (r) { actItems = r && r.ok ? r.items : { err: (r && r.error) || 'مشكلة' }; if (view === 'act') renderAct(); }).catch(function () { actItems = { err: 'مشكلة في النت' }; renderAct(); }); }
+function renderAct() {
+  var h = '<div class="card"><h3>📜 سجل النشاط (آخر 400 عملية)</h3><p class="muted">كل اللي عمله الفنيين والمشرفين: فتح وإنهاء صبات، خروج عربيات، خلطات، مخزون، جرد، وتعديلاتك.</p></div>';
+  if (!actItems) h += '<p class="center muted">…</p>';
+  else if (actItems.err) h += '<p class="center" style="color:#c0392b">⚠️ ' + esc(actItems.err) + '</p>';
+  else {
+    var day = '';
+    h += '<div class="card" style="padding:4px 10px">' + actItems.map(function (a) {
+      var hd = a.date !== day ? '<div style="background:#eef1f4;padding:4px 6px;margin:6px -10px;font-weight:bold">📅 ' + esc(a.date) + '</div>' : ''; day = a.date;
+      var cl = /^\d+$/.test(a.ref) && /صبة|اعتماد/.test(a.act) ? ' onclick="viewPour(' + a.ref + ')" style="cursor:pointer;border-bottom:1px solid #eee;padding:5px 0"' : ' style="border-bottom:1px solid #eee;padding:5px 0"';
+      return hd + '<div' + cl + '><b>' + esc(a.time) + '</b> ' + esc(a.act) + ' — <span style="color:#1f4e78">' + esc(a.who) + '</span> <span class="muted">(' + esc(a.role) + ')</span><br><span class="muted">' + esc(a.details) + '</span></div>';
+    }).join('') + (actItems.length ? '' : '<p class="muted">لسه مفيش نشاط متسجل</p>') + '</div>';
+  }
+  h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="openAct()">🔄 تحديث</button><button class="btn l" onclick="view=\'home\';render()">رجوع</button></div>';
+  document.getElementById('app').innerHTML = h;
+}
+function openMDisp() { view = 'mdisp'; mdispDate = mdispDate || today(); loadMDisp(); }
+function loadMDisp() {
+  mdispItems = null; renderMDisp();
+  api({ action: 'mgrdisp', code: S.code, date: mdispDate }).then(function (r) { mdispItems = r && r.ok ? r.items : { err: (r && r.error) || 'مشكلة' }; if (view === 'mdisp') renderMDisp(); }).catch(function () { mdispItems = { err: 'مشكلة في النت' }; renderMDisp(); });
+}
+function renderMDisp() {
+  var h = '<div class="card"><h3>🚚 كل خروج العربيات</h3><input type="date" value="' + esc(mdispDate) + '" onchange="mdispDate=this.value;loadMDisp()"></div>';
+  if (!mdispItems) h += '<p class="center muted">…</p>';
+  else if (mdispItems.err) h += '<p class="center" style="color:#c0392b">⚠️ ' + esc(mdispItems.err) + '</p>';
+  else h += '<div class="card list" style="padding:0">' + mdispItems.map(function (d, i) {
+    return '<div class="it"><div><b>' + esc(d.exit) + ' · ' + esc(d.truck) + '</b> → ' + esc(d.client) + (d.site ? ' — ' + esc(d.site) : '') +
+      '<br><span class="muted">' + esc(d.qty_m3) + ' م³ · ' + esc(d.grade || '') + ' · ' + esc(d.status) + (d.notech ? ' (بدون فني)' : '') + ' · المشرف: ' + esc(d.by) + (d.site_tech ? ' · الفني: ' + esc(d.site_tech) : '') + '</span></div>' +
+      '<button class="btn l mini" onclick="mgrEditDisp(' + i + ')">✏️</button></div>';
+  }).join('') + (mdispItems.length ? '' : '<p class="muted" style="padding:10px">مفيش عربيات اليوم ده</p>') + '</div>';
+  h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="loadMDisp()">🔄 تحديث</button><button class="btn l" onclick="view=\'home\';render()">رجوع</button></div>';
+  document.getElementById('app').innerHTML = h;
+}
+function mgrEditDisp(i) {
+  var d = JSON.parse(JSON.stringify(mdispItems[i])); d.ts = Date.now(); d.synced = false; d.breakdown = d.status === 'عطلانة' ? (d.breakdown || 'عطلانة') : null;
+  supForm = d; view = 'home'; renderSupForm(); window.scrollTo(0, 0);
+  toast('✏️ بتعدّل خروج ' + (d.truck || '') + ' — بعد الحفظ هيتعدل في الشيت');
+}
+/* افتح صبة الفني زي ما هو شايفها بالظبط — وتقدر تعدّل وتحفظ */
+function mgrOpenPour(sid) {
+  toast('⏳ …');
+  api({ action: 'pour', code: S.code, sid: sid }).then(function (r) {
+    if (!r.ok) return toast('❌ ' + (r.error || ''));
+    var id = 'mgr_' + sid, d = r.data || {}; d.header = d.header || {}; d.rows = d.rows || []; d.events = d.events || []; d.footer = d.footer || {};
+    S.reports[id] = { id: id, mgrSid: sid, mgrStatus: r.status, mgrOwner: r.owner, created: Date.now() - 6 * 3600000, updatedAt: 0, data: d };
+    cur = S.reports[id]; view = 'rep'; render(); window.scrollTo(0, 0);
+    if (d.header.client && r.status !== 'مأكد') api({ action: 'incoming', code: S.code, client: d.header.client, site: d.header.site, since: 0 }).then(function (x) { if (x && x.ok && cur === S.reports[id]) { cur.incoming = x.incoming || []; renderReport(); } });
+  }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
+}
+function mgrSavePour() {
+  if (!cur || !cur.mgrSid) return;
+  if (!confirm('تحفظ التعديل على صبة #' + cur.mgrSid + '؟ هيتسجل باسمك في سجل النشاط.')) return;
+  api({ action: 'mgrsave', code: S.code, sid: cur.mgrSid, data: cur.data }).then(function (r) {
+    if (!r || !r.ok) return toast('❌ ' + ((r && r.error) || 'مشكلة'));
+    toast('✅ اتحفظ' + (r.diff && r.diff.length ? ': ' + r.diff.join(' · ') : '')); var sid = cur.mgrSid; delete S.reports[cur.id]; cur = null; viewPour(sid);
+  }).catch(function () { toast('❌ محتاج نت'); });
+}
+function mgrApprove(sid) {
+  if (!confirm('تعتمد السايت شيت #' + sid + '؟')) return;
+  api({ action: 'mgrapprove', code: S.code, sid: sid }).then(function (r) { if (!r || !r.ok) return toast('❌ ' + ((r && r.error) || '')); toast('✅ اتعتمد'); viewPour(sid); }).catch(function () { toast('❌ محتاج نت'); });
+}
 // ===================== الإضافات + الجرد اليومي =====================
 var admForm = null, countForm = null, countResult = null;
 function admTypeList() { var o = Object.keys(S.admTypes || {}); (S.admix || []).forEach(function (a) { if (o.indexOf(a.type) < 0) o.push(a.type); }); return o; }
@@ -1089,6 +1163,7 @@ function renderSup() {
   if (supForm) return renderSupForm();
   var h = '<div style="padding:10px" class="g2"><button class="btn g big" onclick="newDispatch()">🚚 خروج عربية جديدة</button><button class="btn big" onclick="showPours()">🏗 الصبات في المواقع</button></div>' +
     '<div style="padding:0 10px" class="g3"><button class="btn l" onclick="openProd()">🧪 الخلطات QC-F-25</button><button class="btn l" onclick="openSilo()">🏭 المخزون والجرد</button><button class="btn l" onclick="openProdRep()">📊 الإنتاجية</button></div>' + siloCards(true);
+  if (S.mgr) h = mgrBar() + h;
   var srv = {}; S.dispToday.forEach(function (d) { srv[d.id] = d; });
   var today = new Date().toDateString();
   var list = S.disp.filter(function (d) { return new Date(d.ts).toDateString() === today; }).slice().reverse();
@@ -1139,6 +1214,9 @@ function viewPour(sid) {
     });
     h += '</table></div>';
     if (r.printUrl) h += '<div style="padding:0 10px"><a class="btn l" style="display:block;text-align:center;text-decoration:none" target="_blank" href="' + esc(r.printUrl) + '">🖨 السايت شيت</a></div>';
+    if (S.mgr) h += '<div style="padding:0 10px" class="g2"><button class="btn g" onclick="mgrOpenPour(' + sid + ')">👁 افتحها زي الفني / عدّل</button>' +
+      (d.qa ? '<span class="st f" style="text-align:center;padding:10px">✅ معتمدة — ' + esc(d.qa.name) + '</span>' : r.status === 'مأكد' ? '<button class="btn" onclick="mgrApprove(' + sid + ')">✅ اعتماد</button>' : '<span></span>') + '</div>' +
+      ((d.edits || []).length ? '<div class="card"><b>✏️ تعديلات المدير:</b><br>' + d.edits.map(function (e) { return '<span class="muted">' + esc(e.at) + ' — ' + esc(e.by) + ': ' + esc(e.what) + '</span>'; }).join('<br>') + '</div>' : '');
     h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="viewPour(' + sid + ')">🔄 تحديث</button><button class="btn l" onclick="showPours()">رجوع</button></div>';
     view = 'pour'; document.getElementById('app').innerHTML = h; window.scrollTo(0, 0);
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
@@ -1257,6 +1335,7 @@ var rollTo = null;
 /* صبة من يوم فات = اتفتحت قبل 12 بالليل، وواقفة من 4 ساعات أو أكتر، ومفيش عربية في نص الصب.
    الصبة اللي بدأت 9 بالليل وشغالة لحد بعد 12 بتكمل عادي على نفس الشيت. */
 function isOldDay(r) {
+  if (r && r.mgrSid) return false;
   if (!(r && !r.final && !r.handedTo && r.data.header.date && r.data.header.date < today() && (r.data.rows || []).length)) return false;
   if ((r.data.rows || []).some(function (x) { return !x.diverted && x.arrival && !x.end; })) return false;
   return Date.now() - (r.updatedAt || 0) > 4 * 3600000;
