@@ -220,7 +220,7 @@ function typedAlready(rows, x) {
     if (r.dispatch_id || r.diverted || tkey(r.truck) !== tkey(x.truck)) return false;
     var re = hm2m(r.exit), ra = hm2m(r.arrival || r.start);
     if (re !== null && xe !== null && Math.abs(re - xe) <= 15) return true;
-    if (ra !== null && xe !== null) return (ra - xe + 1440) % 1440 <= 360;
+    if (ra !== null && xe !== null && r.arrDate && x.date) { var df = dayNum(r.arrDate) * 1440 + ra - (dayNum(x.date) * 1440 + xe); return df >= 0 && df <= 360; }
     return false;
   });
 }
