@@ -378,7 +378,10 @@ function pickHead(k, v) {
   touch(); renderHeader();
 }
 function pickSup(k, v) {
-  supForm[k] = v; if (k === 'client' && supForm.grade) admAuto(supForm, true);
+  supForm[k] = v;
+  // العميل اتغير: الخلطة تبقى اللي العميل ده بياخدها، مش اللي فاضلة من العربية اللي قبلها
+  if ((k === 'client' || k === 'site') && view !== 'rep') { var um = usualMix(supForm.client, supForm.site, supForm.id); if (um) supForm.grade = um; }
+  if (k === 'client' && supForm.grade) admAuto(supForm, true);
   var mm = (S.modeMem || {})[supForm.client + '|' + (supForm.site || '')]; if (mm && (k === 'client' || k === 'site')) { supForm.notech = mm.notech; supForm.method = mm.method; supForm.pump = mm.pump; if (mm.notech) supForm.site_tech = ''; }
   
   renderSupForm();
@@ -524,11 +527,21 @@ function broke(id) {
     text: 'عربية ' + x.truck + ' (خرجت ' + x.exit + ') ' + note, cause: note });
   touch(); renderReport();
 }
+/** العربية الجاية خلطتها غير رتبة الصبة (مثلاً 250 والصبة 300) */
+function mixWrong(x) {
+  var h = (cur && cur.data && cur.data.header) || {}, m = x.mix || (x.grade && mixBy(String(x.grade)));
+  if (!m || !h.grade_strength || !Number(m.g || m.grade)) return '';
+  var g = Number(m.g || m.grade), c = Number(m.c || m.cement);
+  if (g === Number(h.grade_strength) && (!h.cement_content || !c || c === Number(h.cement_content))) return '';
+  return 'خارجة ' + g + '/' + c + ' والصبة ' + h.grade_strength + '/' + (h.cement_content || '؟');
+}
 function arrived(id) {
   if (isOldDay(cur)) return askRoll();
   var x = (cur.incoming || []).filter(function (y) { return y.id === id; })[0]; if (!x) return;
   var ag = since(x.exit);
   if (ag != null && ag > 180 && !confirm('⚠️ العربية ' + (x.truck || '') + ' خرجت من المحطة ' + x.exit + ' (من ' + Math.floor(ag / 60) + ' ساعة و' + (ag % 60) + ' دقيقة).\nمتأكد إنها وصلت عندك دلوقتي؟\n\nلو مش جاية عندك ادوس «إلغاء».')) return;
+  var mw = mixWrong(x);
+  if (mw && !confirm('⚠️ ' + mw + '\n\nمتصبهاش قبل ما تكلم المحطة وتتأكد.\nتسجّل وصولها؟')) return;
   var br = x.broken || brokenLocal(id);
   cur.data.rows.push({ truck: x.truck, driver: x.driver, qty_m3: Number(x.qty_m3) || x.qty_m3, exit: x.exit, arrival: nowHM(), dispatch_id: x.id, ticket: x.ticket || null, exit_slump: (x.exit_slump === '' || x.exit_slump == null) ? null : x.exit_slump,
     breakdown: br || null, note: br ? 'كانت عطلانة: ' + br : null });
@@ -648,7 +661,7 @@ function renderReport() {
   if (inc.length && !ro) incHtml += '<div class="card" style="border-right:5px solid var(--b)"><h3>🚚 جاية من المحطة</h3>' + inc.map(function (x) {
     var br = x.broken || brokenLocal(x.id);
     return '<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee"><div><b>' + esc(x.truck) + '</b> · ' + esc(x.qty_m3 || '') + ' م³' +
-      (br ? ' <span class="badge">🛠 عطلانة</span>' : '') + (x.otherSite ? ' <span class="badge y">لموقع: ' + esc(x.otherSite) + '</span>' : '') + '<br><span class="muted">خرجت ' + esc(x.exit) + ' (' + since(x.exit) + ' د)' + ' · ' + esc(x.driver || '') + (br ? ' · ' + esc(br) : '') + '</span></div>' +
+      (br ? ' <span class="badge">🛠 عطلانة</span>' : '') + (x.otherSite ? ' <span class="badge y">لموقع: ' + esc(x.otherSite) + '</span>' : '') + (mixWrong(x) ? '<br><span class="badge" style="background:#c0392b;color:#fff">⚠️ ' + esc(mixWrong(x)) + '</span>' : '') + '<br><span class="muted">خرجت ' + esc(x.exit) + ' (' + since(x.exit) + ' د)' + ' · ' + esc(x.driver || '') + (br ? ' · ' + esc(br) : '') + '</span></div>' +
       '<div style="display:flex;gap:4px">' + (br ? '' : '<button class="btn l mini" onclick="broke(\'' + x.id + '\')">🛠</button>') +
       '<button class="btn g mini" onclick="arrived(\'' + x.id + '\')">📍 وصلت</button></div></div>';
   }).join('') + '</div>';
@@ -874,8 +887,18 @@ function renderProd() {
       '</div>' + (adjs.length < 3 ? '<button class="btn l mini" onclick="newAdj(\'' + m.id + '\')">✏️ تعديل</button>' : '') + '</div></div>';
   }).join('') || '<p class="center muted" style="padding:20px">مفيش خلطات اتسجلت النهارده</p>') + '</div>';
   h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="view=\'home\';render()">رجوع</button>' +
-    (S.prodUrl ? '<a class="btn l" style="text-align:center;text-decoration:none" target="_blank" href="' + esc(S.prodUrl) + '">🖨 سجل النهارده</a>' : '<span></span>') + '</div>';
+    (S.prodUrl ? '<a class="btn l" style="text-align:center;text-decoration:none" target="_blank" href="' + esc(S.prodUrl) + '">🖨 سجل النهارده</a>' : '<span></span>') + '</div><div style="padding:6px 10px 0">' + xlsxBtn('prod', '', 'Excel سجل النهارده') + '</div>';
   document.getElementById('app').innerHTML = h;
+}
+function mixLab(code) { var m = mixBy(code); return m ? 'جهد ' + m.grade + ' / محتوى ' + m.cement + '  (خلطة ' + code + ')' : code; }
+/** الخلطة اللي العميل ده (ونفس الموقع) خدها آخر مرة: من الخروجات اللي فاتت أو من QC-F-25 */
+function usualMix(client, site, exceptId) {
+  if (!client) return '';
+  var d = (S.disp || []).filter(function (x) { return x.id !== exceptId && !x.cancelled && x.client === client && (!site || !x.site || x.site === site) && x.grade; })
+    .sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); })[0];
+  if (d) return String(d.grade);
+  var p = (S.prod || []).concat(S.prodToday || []).filter(function (x) { return x && x.client === client && x.mix; }).pop();
+  return p ? String(p.mix) : '';
 }
 function mixBy(code) { return (S.mixes || []).filter(function (m) { return m.code === code; })[0]; }
 function newProd() {
@@ -992,17 +1015,35 @@ function renderProdRep() {
   else if (repData.err) h += '<p class="center" style="color:#c0392b">⚠️ ' + esc(repData.err) + '</p><div style="padding:0 10px"><button class="btn l" style="width:100%" onclick="repData=null;renderProdRep();loadProdRep()">🔄 جرّب تاني</button></div>';
   else {
     var R = repData.rep;
-    h += '<div class="card"><div class="g3" style="text-align:center"><div><div class="muted">إنتاج اليوم</div><b style="font-size:1.6em">' + R.total + '</b> م³</div><div><div class="muted">تراكمي الشهر</div><b style="font-size:1.6em">' + R.cum + '</b></div><div><div class="muted">متوسط اليوم</div><b style="font-size:1.6em">' + R.avg + '</b></div></div></div>' +
+    h += '<div class="card"><div class="g3" style="text-align:center"><div><div class="muted">إنتاج اليوم</div><b style="font-size:1.6em">' + R.total + '</b> م³</div><div><div class="muted">تراكمي الشهر</div><b style="font-size:1.6em">' + R.cum + '</b></div><div><div class="muted">متوسط اليوم</div><b style="font-size:1.6em">' + R.avg + '</b>' + (R.days ? '<div class="muted">على ' + R.days + ' يوم شغل</div>' : '') + '</div></div></div>' +
       '<div class="card"><table style="width:100%;border-collapse:collapse;font-size:.9em"><tr style="background:#eef1f4"><th>العميل</th><th>الموقع</th><th>الخلطة</th><th>م³</th><th>إضافة</th><th>المضخات</th></tr>' +
       R.rows.map(function (g) {
-        return '<tr style="border-bottom:1px solid #eee"><td>' + esc(g.client) + (g.sub ? '<br><span class="muted">' + esc(g.sub) + '</span>' : '') + '</td><td>' + esc(g.site || '') + '</td><td>' + esc(g.mix || '') + '</td><td><b>' + g.qty + '</b></td><td>' + esc(g.adm) + (g.siteL ? '<br><span class="muted">موقع ' + g.siteL + ' L</span>' : '') + '</td><td>' +
+        return '<tr style="border-bottom:1px solid #eee"><td>' + esc(g.client) + (g.sub ? '<br><span class="muted">' + esc(g.sub) + '</span>' : '') + '</td><td>' + esc(g.site || '') + '</td><td>' + esc(g.mix || '') + '</td><td><b>' + g.qty + '</b></td><td>' + esc(g.adm) + (g.siteL ? '<br><span class="muted">موقع ' + g.siteL + ' L</span>' : '') + ((g.warn || []).length ? '<br><span style="color:#c0392b;font-size:.85em">⚠️ ' + esc(g.warn.join(' · ')) + '</span>' : '') + '</td><td>' +
           Object.keys(g.pumps).map(function (p) { return esc(p) + ': ' + g.pumps[p]; }).join('<br>') + '</td></tr>';
       }).join('') + '</table>' + (R.rows.length ? '' : '<p class="center muted">مفيش عربيات اليوم ده</p>') +
       (R.hasUnknown ? '<p class="muted">؟ = عربيات مش مربوطة بسايت شيت، فمش معروف اتصبت بأنهي مضخة.</p>' : '') + '</div>' +
-      (repData.url ? '<div style="padding:0 10px"><a class="btn g big" style="display:block;text-align:center;text-decoration:none;padding:12px" target="_blank" href="' + esc(repData.url) + '">🖨 طباعة التقرير (F-01-13)</a></div>' : '');
+      (repData.url ? '<div style="padding:0 10px"><a class="btn g big" style="display:block;text-align:center;text-decoration:none;padding:12px" target="_blank" href="' + esc(repData.url) + '">🖨 طباعة التقرير (F-01-13)</a></div>' : '') +
+      '<div class="g2" style="padding:6px 10px 0">' + xlsxBtn('prodrep', repDate, 'Excel التقرير') + xlsxBtn('day', repDate, 'كل تقارير اليوم') + '</div>';
   }
   h += '<div style="padding:10px"><button class="btn l" style="width:100%" onclick="view=\'home\';render()">رجوع</button></div>';
   document.getElementById('app').innerHTML = h;
+}
+// ===================== تصدير Excel =====================
+function xlsxBtn(kind, a, lab) { return '<button class="btn l" style="background:#e8f5e9" onclick="dlXlsx(\'' + kind + '\',\'' + esc(String(a || '')) + '\')">📥 ' + (lab || 'Excel') + '</button>'; }
+var xlsxBusy = false;
+function dlXlsx(kind, a) {
+  if (xlsxBusy) return toast('⏳ لسه بيجهز الملف اللي قبله');
+  if (!navigator.onLine) return toast('محتاج نت');
+  xlsxBusy = true; toast('⏳ بيجهز ملف الإكسل… (ممكن ياخد دقيقة)');
+  var b = { action: 'xlsx', code: S.code, kind: kind }; if (kind === 'site') b.sid = a; else b.date = a || today();
+  api(b).then(function (r) {
+    xlsxBusy = false;
+    if (!r || !r.ok) return alert('⚠️ ' + ((r && r.error) || 'السيرفر رجّع رد غلط — اتأكد إن Code.gs الجديد اتنشر'));
+    var bin = atob(r.b64), u8 = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    var url = URL.createObjectURL(new Blob([u8], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    var l = document.createElement('a'); l.href = url; l.download = r.name || 'report.xlsx'; document.body.appendChild(l); l.click(); l.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000); toast('✅ اتنزل: ' + (r.name || ''));
+  }).catch(function () { xlsxBusy = false; alert('⚠️ مشكلة في النت أو السيرفر'); });
 }
 // ===================== المدير =====================
 var actItems = null, mdispItems = null, mdispDate = null;
@@ -1260,7 +1301,7 @@ function renderSup() {
     return '<div class="it" onclick="editDispatch(\'' + d.id + '\')"><div><b>' + esc(d.truck) + ' ← ' + esc(d.client) + '</b><br><span class="muted">خرجت ' + esc(d.exit) + ' · ' + esc(d.qty_m3 || '') + ' م³' + (d.exit_slump ? ' · هبوط ' + esc(d.exit_slump) : '') + ' · ' + esc(d.driver || '') + '</span></div>' + st + '</div>';
   }).join('') || '<p class="center muted" style="padding:20px">مفيش عربيات خرجت النهارده</p>') + '</div>';
   h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="syncDispatch(true);toast(\'⏳ بيحدّث…\')">🔄 تحديث</button>' +
-    (S.plantUrl ? '<a class="btn l" style="text-align:center;text-decoration:none" target="_blank" href="' + esc(S.plantUrl) + '">🖨 شيت النهارده</a>' : '<span></span>') + '</div><p class="center muted"><a href="#" onclick="logout();return false">خروج</a></p>';
+    (S.plantUrl ? '<a class="btn l" style="text-align:center;text-decoration:none" target="_blank" href="' + esc(S.plantUrl) + '">🖨 شيت النهارده</a>' : '<span></span>') + '</div><div class="g2" style="padding:6px 10px 0">' + xlsxBtn('plant', '', 'Excel شيت المحطة') + xlsxBtn('day', '', 'كل تقارير النهارده') + '</div><p class="center muted"><a href="#" onclick="logout();return false">خروج</a></p>';
   document.getElementById('app').innerHTML = h;
 }
 var archDate = '', archQ = '';
@@ -1274,7 +1315,8 @@ function showPours(dt, q) {
     var list = r.pours || [];
     var arch = S.mgr ? '<div class="g2" style="margin-top:6px"><div><label>📅 أرشيف — صبات يوم</label><input type="date" value="' + esc(archDate) + '" onchange="showPours(this.value)"></div>' +
       '<div><label>🔎 عميل / موقع / عنصر</label><input id="archQ" value="' + esc(archQ) + '" onchange="showPours(archDate || today(), this.value)" placeholder="مثلاً كراشينج"></div></div>' +
-      (archDate ? '<button class="btn l mini" style="margin-top:6px" onclick="showPours(\'\', \'\')">↩ رجوع للصبات الحالية</button>' : '') : '';
+      (archDate ? '<button class="btn l mini" style="margin-top:6px" onclick="showPours(\'\', \'\')">↩ رجوع للصبات الحالية</button>' : '') +
+      '<div style="margin-top:6px">' + xlsxBtn('day', archDate || today(), 'كل تقارير يوم ' + (archDate || today()) + ' Excel') + '</div>' : '';
     var h = '<div class="card"><h3>🏗 ' + (archDate ? 'صبات يوم ' + esc(archDate) + (archQ ? ' — «' + esc(archQ) + '»' : '') : 'الصبات (المفتوحة + اللي خلصت آخر يوم ونص)') + '</h3>' + arch + (list.length ? '' : '<p class="muted">مفيش صبات</p>') + '</div><div class="card list" style="padding:0">' +
       list.map(function (o) {
         var st = o.done ? '<span class="st f">✅ خلصت</span>' : o.stale ? '<span class="st p" style="background:#fdecea;color:#c0392b">📅 مفتوحة من ' + esc(o.date) + '</span>' : '<span class="st s">🟢 شغالة</span>';
@@ -1305,6 +1347,7 @@ function viewPour(sid) {
     });
     h += '</table></div>';
     if (r.printUrl) h += '<div style="padding:0 10px"><a class="btn l" style="display:block;text-align:center;text-decoration:none" target="_blank" href="' + esc(r.printUrl) + '">🖨 السايت شيت</a></div>';
+    h += '<div style="padding:6px 10px 0">' + xlsxBtn('site', sid, 'Excel السايت شيت') + '</div>';
     if (S.mgr) h += '<div style="padding:0 10px" class="g2"><button class="btn g" onclick="mgrOpenPour(' + sid + ')">👁 افتحها زي الفني / عدّل</button>' +
       (d.qa ? '<span class="st f" style="text-align:center;padding:10px">✅ معتمدة — ' + esc(d.qa.name) + '</span>' : r.status === 'مأكد' ? '<button class="btn" onclick="mgrApprove(' + sid + ')">✅ اعتماد</button>' : '<span></span>') + '</div>' +
       ((d.edits || []).length ? '<div class="card"><b>✏️ تعديلات المدير:</b><br>' + d.edits.map(function (e) { return '<span class="muted">' + esc(e.at) + ' — ' + esc(e.by) + ': ' + esc(e.what) + '</span>'; }).join('<br>') + '</div>' : '');
@@ -1314,7 +1357,7 @@ function viewPour(sid) {
 }
 function newDispatch() {
   var last = S.disp[S.disp.length - 1] || {};
-  supForm = { id: uid(), ts: Date.now(), date: today(), exit: nowHM(), client: last.client || '', site: last.site || '', silo: last.silo || '', grade: last.grade || '', qty_m3: last.qty_m3 || 9, truck: '', driver: '', ticket: '', exit_slump: '', temp: '', samples: '', site_tech: last.site_tech || '', sup_note: '' };
+  supForm = { id: uid(), ts: Date.now(), date: today(), exit: nowHM(), client: last.client || '', site: last.site || '', silo: last.silo || '', grade: usualMix(last.client, last.site) || last.grade || '', qty_m3: last.qty_m3 || 9, truck: '', driver: '', ticket: '', exit_slump: '', temp: '', samples: '', site_tech: last.site_tech || '', sup_note: '' };
   render();
 }
 function editDispatch(id) { var d = S.disp.filter(function (x) { return x.id === id; })[0]; if (d) { supForm = JSON.parse(JSON.stringify(d)); render(); } }
@@ -1330,7 +1373,9 @@ function renderSupForm() {
     inp('temp', 'الحرارة', 'inputmode="decimal"') + inp('samples', 'عدد العينات', 'inputmode="numeric"') +
     (f.notech ? '<div></div>' : '<div><label>فني الموقع</label><input list="techs" value="' + esc(f.site_tech) + '" oninput="sf(\'site_tech\',this.value)"><datalist id="techs">' + (S.techs || []).map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist></div>') +
     '<div><label>وقت الخروج</label><input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" data-t autocomplete="off" value="' + esc(f.exit) + '" onchange="sf(\'exit\',this.value)"></div>' +
-    supSel('grade', 'الرتبة', (S.mixes || []).map(function (m) { return m.code; })) + inp('ticket', 'رقم البون', 'inputmode="numeric"') +
+    '<div style="grid-column:1/-1">' + supSel('grade', 'الجهد / المحتوى', (S.mixes || []).map(function (m) { return m.code; }), mixLab) +
+    (f.grade && mixBy(String(f.grade)) ? '<div style="margin-top:4px;padding:6px 10px;border-radius:8px;background:#fdf2e9;font-weight:bold;font-size:1.15em;text-align:center">العربية دي: جهد ' + esc(mixBy(String(f.grade)).grade) + ' / محتوى ' + esc(mixBy(String(f.grade)).cement) + '</div>' : '') + '</div>' +
+    inp('ticket', 'رقم البون', 'inputmode="numeric"') +
     '<div><label>السايلو</label><input list="silosD" value="' + esc(f.silo || '') + '" onchange="sf(\'silo\',this.value.trim());renderSupForm()"><datalist id="silosD">' + (S.siloSt || []).map(function (x) { return '<option value="' + esc(x.silo) + '">'; }).join('') + '</datalist></div><div></div></div>' +
     dispSiloNote(f) + admFields(f) +
     inp('sup_note', 'ملاحظات') + (isEdit ? '<p class="center"><a href="#" style="color:#c0392b" onclick="cancelDispatch();return false">إلغاء العربية دي (اتسجلت بالغلط)</a></p>' : '') + '</div>' +
@@ -1356,10 +1401,10 @@ function setMode(v) {
   S.modeMem = S.modeMem || {}; if (supForm.client) S.modeMem[supForm.client + '|' + (supForm.site || '')] = { notech: v, method: supForm.method, pump: supForm.pump };
   var y = window.scrollY; renderSupForm(); window.scrollTo(0, y);
 }
-function supSel(k, lab, opts) {
+function supSel(k, lab, opts, labf) {
   var v = supForm[k] == null ? '' : String(supForm[k]), o = opts.slice(); if (v && o.indexOf(v) < 0) o.unshift(v);
   return '<div><label>' + lab + '</label><select data-lab="' + esc(lab) + '" onchange="supPick(\'' + k + '\',this)"><option value="">— اختار —</option>' +
-    o.map(function (x) { return '<option' + (x === v ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '<option value="__o">✏️ حاجة مش في القايمة…</option></select></div>';
+    o.map(function (x) { return '<option value="' + esc(x) + '"' + (x === v ? ' selected' : '') + '>' + esc(labf ? labf(x) : x) + '</option>'; }).join('') + '<option value="__o">✏️ حاجة مش في القايمة…</option></select></div>';
 }
 function supPick(k, el) {
   var v = el.value;
@@ -1377,6 +1422,10 @@ function saveDispatch() {
   if (f.sadm_l !== '' && f.sadm_l != null) f.sadm_l = Number(String(f.sadm_l).replace(',', '.')) || '';
   if (f.sadm_l && !f.sadm_t) return toast('اختار نوع إضافة الموقع');
   if (f.notech && f.method === 'مضخة' && !f.pump) return toast('اختار المضخة');
+  if (!f.grade) return toast('اختار الخلطة');
+  var um = usualMix(f.client, f.site, f.id);
+  if (um && String(f.grade) !== um && !f.mixOk && !confirm('⚠️ ' + f.client + ' آخر مرة خد خلطة ' + mixLab(um) + '\nوانت مختار ' + mixLab(f.grade) + '\n\nمتأكد إن العربية دي اتعبّت ' + mixLab(f.grade) + '؟')) return;
+  if (um && String(f.grade) !== um) f.mixOk = 1;
   if (f.client) { S.modeMem = S.modeMem || {}; S.modeMem[f.client + '|' + (f.site || '')] = { notech: !!f.notech, method: f.method, pump: f.pump }; }
   f.synced = false;
   var i = S.disp.map(function (x) { return x.id; }).indexOf(f.id);
