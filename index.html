@@ -1246,7 +1246,7 @@ function syncDispatch(force) {
 }
 function renderSup() {
   if (supForm) return renderSupForm();
-  var h = '<div style="padding:10px" class="g2"><button class="btn g big" onclick="newDispatch()">🚚 خروج عربية جديدة</button><button class="btn big" onclick="showPours()">🏗 الصبات في المواقع</button></div>' +
+  var h = '<div style="padding:10px" class="g2"><button class="btn g big" onclick="newDispatch()">🚚 خروج عربية جديدة</button><button class="btn big" onclick="showPours(\'\', \'\')">🏗 الصبات في المواقع</button></div>' +
     '<div style="padding:0 10px" class="g3"><button class="btn l" onclick="openProd()">🧪 الخلطات QC-F-25</button><button class="btn l" onclick="openSilo()">🏭 المخزون والجرد</button><button class="btn l" onclick="openProdRep()">📊 الإنتاجية</button></div>' + siloCards(true);
   if (S.mgr) h = mgrBar() + h;
   var srv = {}; S.dispToday.forEach(function (d) { srv[d.id] = d; });
@@ -1263,13 +1263,19 @@ function renderSup() {
     (S.plantUrl ? '<a class="btn l" style="text-align:center;text-decoration:none" target="_blank" href="' + esc(S.plantUrl) + '">🖨 شيت النهارده</a>' : '<span></span>') + '</div><p class="center muted"><a href="#" onclick="logout();return false">خروج</a></p>';
   document.getElementById('app').innerHTML = h;
 }
-function showPours() {
+var archDate = '', archQ = '';
+function showPours(dt, q) {
+  if (dt !== undefined) archDate = dt; if (q !== undefined) archQ = q;
+  if (!S.mgr) archDate = '';
   if (!navigator.onLine) return toast('محتاج نت');
   toast('⏳ بيجيب الصبات…');
-  api({ action: 'pours', code: S.code }).then(function (r) {
+  api(archDate ? { action: 'mgrpours', code: S.code, date: archDate, q: archQ } : { action: 'pours', code: S.code }).then(function (r) {
     if (!r.ok) return toast('❌ ' + (r.error || ''));
     var list = r.pours || [];
-    var h = '<div class="card"><h3>🏗 الصبات (المفتوحة + اللي خلصت آخر يوم ونص)</h3>' + (list.length ? '' : '<p class="muted">مفيش صبات</p>') + '</div><div class="card list" style="padding:0">' +
+    var arch = S.mgr ? '<div class="g2" style="margin-top:6px"><div><label>📅 أرشيف — صبات يوم</label><input type="date" value="' + esc(archDate) + '" onchange="showPours(this.value)"></div>' +
+      '<div><label>🔎 عميل / موقع / عنصر</label><input id="archQ" value="' + esc(archQ) + '" onchange="showPours(archDate || today(), this.value)" placeholder="مثلاً كراشينج"></div></div>' +
+      (archDate ? '<button class="btn l mini" style="margin-top:6px" onclick="showPours(\'\', \'\')">↩ رجوع للصبات الحالية</button>' : '') : '';
+    var h = '<div class="card"><h3>🏗 ' + (archDate ? 'صبات يوم ' + esc(archDate) + (archQ ? ' — «' + esc(archQ) + '»' : '') : 'الصبات (المفتوحة + اللي خلصت آخر يوم ونص)') + '</h3>' + arch + (list.length ? '' : '<p class="muted">مفيش صبات</p>') + '</div><div class="card list" style="padding:0">' +
       list.map(function (o) {
         var st = o.done ? '<span class="st f">✅ خلصت</span>' : o.stale ? '<span class="st p" style="background:#fdecea;color:#c0392b">📅 مفتوحة من ' + esc(o.date) + '</span>' : '<span class="st s">🟢 شغالة</span>';
         var al = (o.reds ? '<span class="badge">🔴 ' + o.reds + '</span> ' : '') + (o.yellows ? '<span class="badge y">🟡 ' + o.yellows + '</span>' : '');
