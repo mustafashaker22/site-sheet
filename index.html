@@ -180,7 +180,16 @@ function render() {
   renderHome();
 }
 function renderNoApi() {
-  document.getElementById('app').innerHTML = '<div class="card center"><h3 style="justify-content:center">⚠️ التطبيق مش متوصل بالسيرفر</h3><p>افتح التطبيق من <b>اللينك اللي بعته المدير</b> (مش من البحث).</p></div>';
+  document.getElementById('app').innerHTML = '<div class="card center"><h3 style="justify-content:center">⚠️ التطبيق مش متوصل بالسيرفر</h3><p>افتح التطبيق من <b>اللينك اللي بعته المدير</b> (مش من البحث).</p>' +
+    '<p class="muted">أو انسخ اللينك اللي المدير بعته والصقه هنا:</p><input id="apiLink" placeholder="الصق اللينك هنا" dir="ltr" style="text-align:left"><div style="height:8px"></div><button class="btn big" onclick="setApiLink()">🔗 اتصال</button></div>';
+  // لو فيه config.json على الموقع فيه لينك السيرفر، نستخدمه لوحده
+  fetch('config.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (c) { if (c && /^https:\/\/script\.google/.test(c.api || '') && !S.api) { S.api = c.api; save(); render(); } }).catch(function () {});
+}
+function setApiLink() {
+  var v = (document.getElementById('apiLink').value || '').trim(), m = /[?&]api=([^&\s]+)/.exec(v);
+  if (m) v = decodeURIComponent(m[1]);
+  if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(v)) return toast('⚠️ اللينك ده مش صح — انسخ اللينك اللي المدير بعته كله');
+  S.api = v; save(); toast('✅ اتوصل'); render();
 }
 function renderLogin() {
   document.getElementById('app').innerHTML = '<div class="card"><h3>🔑 دخول الفني</h3><label>الكود اللي إداهولك المدير</label><input id="code" inputmode="numeric" autocomplete="off"><div style="height:10px"></div><button class="btn big" onclick="login()">دخول</button><p class="muted">أول مرة بس محتاج نت. بعد كده التطبيق بيشتغل من غير نت.</p></div>';
@@ -237,7 +246,7 @@ function renderHome() {
     var hd = r.data.header || {}, n = (r.data.rows || []).length;
     if (r.handedTo && sameName(r.handedTo, S.name)) { delete r.handedTo; save(); }
     var st = r.handedTo ? '<span class="st s">🔁 اتسلمت لـ ' + esc(r.handedTo) + '</span>' : r.closedSynced ? '<span class="st f">✅ خلصت واتبعتت</span>' : r.final ? '<span class="st p">⏳ خلصت — مستنية نت</span>' :
-      (!n && !r.sid ? '<span class="st s">📝 لسه فاضية</span>' : r.updatedAt > (r.syncedAt || 0) ? '<span class="st p">⏳ شغالة — مستنية نت</span>' : '<span class="st s">🟢 شغالة</span>');
+      (!n && !r.sid ? '<span class="st s">📝 لسه فاضية</span>' : (hd.date && hd.date < today() && n) ? '<span class="st p" style="background:#fdecea;color:#c0392b">📅 من يوم فات — اقفلها</span>' : r.updatedAt > (r.syncedAt || 0) ? '<span class="st p">⏳ شغالة — مستنية نت</span>' : '<span class="st s">🟢 شغالة</span>');
     var canDel = !r.final && !r.closedSynced && !r.handedTo && !n;
     return '<div class="it" onclick="openRep(\'' + id + '\')"><div><b>' + esc(hd.client || 'بدون عميل') + (hd.site ? ' — ' + esc(hd.site) : '') + '</b><br><span class="muted">' + esc(hd.element || '') + ' · ' + esc(hd.date) + ' · ' + n + ' عربية</span></div>' +
       '<div style="display:flex;gap:6px;align-items:center">' + st + (canDel ? '<button class="mini del" onclick="event.stopPropagation();delReport(\'' + id + '\')">🗑</button>' : '') + '</div></div>';
@@ -442,6 +451,7 @@ function broke(id) {
   touch(); renderReport();
 }
 function arrived(id) {
+  if (isOldDay(cur)) return askRoll();
   var x = (cur.incoming || []).filter(function (y) { return y.id === id; })[0]; if (!x) return;
   var br = x.broken || brokenLocal(id);
   cur.data.rows.push({ truck: x.truck, driver: x.driver, qty_m3: Number(x.qty_m3) || x.qty_m3, exit: x.exit, arrival: nowHM(), dispatch_id: x.id, ticket: x.ticket || null, exit_slump: (x.exit_slump === '' || x.exit_slump == null) ? null : x.exit_slump,
@@ -449,6 +459,7 @@ function arrived(id) {
   touch(); renderReport();
 }
 function addTruck() {
+  if (isOldDay(cur)) return askRoll();
   var rows = cur.data.rows, last = rows[rows.length - 1] || {};
   rows.push({ qty_m3: last.qty_m3 || 9, slump: null, additive_l: null });
   touch(); renderReport();
@@ -563,6 +574,7 @@ function renderReport() {
       '<button class="btn g mini" onclick="arrived(\'' + x.id + '\')">📍 وصلت</button></div></div>';
   }).join('') + '</div>';
   var srv = (liveMsgs[cur.id] || []); if (srv.length && !ro) html += '<div class="alert y">📡 من السيرفر:<br>' + srv.map(esc).join('<br>') + '</div>';
+  if (isOldDay(cur)) html += '<div class="alert r">📅 الصبة دي بتاريخ ' + esc(cur.data.header.date) + '. الصبات بتتقفل كل يوم من 12 بالليل لـ 12 بالليل.<br><button class="btn g" style="width:100%;margin-top:6px" onclick="askRoll()">✍️ اقفلها وافتح صبة النهارده لنفس الموقع</button></div>';
   if (cur.handedTo) html += '<div class="alert y">🔁 الصبة دي اتسلمت لـ <b>' + esc(cur.handedTo) + '</b> وهو اللي بيكمّلها.<br><button class="btn l mini" style="margin-top:6px" onclick="takeOver(\'' + cur.id + '\',\'' + esc(cur.handedTo).replace(/'/g, '') + '\')">↩ أنا اللي هكمّل — استلمها تاني</button></div>';
   else if (ro) html += '<div class="alert y">' + (cur.closedSynced ? '✅ الصبة خلصت واتبعتت للمحطة.' : '⏳ الصبة خلصت وهتتبعت أول ما النت يرجع.') + '</div>';
   var total = 0;
@@ -649,6 +661,7 @@ function pumpElement(e, j, dis) {
 /* نقل المضخة: لعنصر تاني / نفس العنصر بجهد مختلف (نفس العميل) — أو لعميل تاني (شيت جديد) */
 var pumpForm = null;
 function newPump() {
+  if (isOldDay(cur)) return askRoll();
   var g = gradeAt(Math.max(0, cur.data.rows.length - 1)), h = cur.data.header;
   pumpForm = { kind: 'same', cause: '', element: '', gs: g.gs, cc: g.cc, old: g, client: '', site: '', cElement: '', cgs: h.grade_strength || '', ccc: h.cement_content || '' };
   view = 'pump'; render(); window.scrollTo(0, 0);
@@ -1096,9 +1109,9 @@ function showPours() {
   api({ action: 'pours', code: S.code }).then(function (r) {
     if (!r.ok) return toast('❌ ' + (r.error || ''));
     var list = r.pours || [];
-    var h = '<div class="card"><h3>🏗 الصبات (النهارده وامبارح)</h3>' + (list.length ? '' : '<p class="muted">مفيش صبات</p>') + '</div><div class="card list" style="padding:0">' +
+    var h = '<div class="card"><h3>🏗 الصبات (المفتوحة + اللي خلصت آخر يوم ونص)</h3>' + (list.length ? '' : '<p class="muted">مفيش صبات</p>') + '</div><div class="card list" style="padding:0">' +
       list.map(function (o) {
-        var st = o.done ? '<span class="st f">✅ خلصت</span>' : '<span class="st s">🟢 شغالة</span>';
+        var st = o.done ? '<span class="st f">✅ خلصت</span>' : o.stale ? '<span class="st p" style="background:#fdecea;color:#c0392b">📅 مفتوحة من ' + esc(o.date) + '</span>' : '<span class="st s">🟢 شغالة</span>';
         var al = (o.reds ? '<span class="badge">🔴 ' + o.reds + '</span> ' : '') + (o.yellows ? '<span class="badge y">🟡 ' + o.yellows + '</span>' : '');
         return '<div class="it" onclick="viewPour(' + o.sid + ')"><div><b>' + esc(o.client) + (o.site ? ' — ' + esc(o.site) : '') + '</b> ' + al +
           '<br><span class="muted">' + esc(o.element) + ' · ' + esc(o.owner) + ' · ' + o.trucks + ' عربية · ' + o.qty + (o.required ? ' من ' + esc(o.required) : '') + ' م³' +
@@ -1239,6 +1252,25 @@ function sigInit() {
   c.addEventListener('mousedown', down); c.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
   c.addEventListener('touchstart', down, { passive: false }); c.addEventListener('touchmove', move, { passive: false }); c.addEventListener('touchend', up);
 }
+/* اليوم من 12 بالليل لـ 12 بالليل: صبة امبارح بتتقفل، وصبة جديدة بتتفتح بنفس البيانات */
+var rollTo = null;
+/* صبة من يوم فات = اتفتحت قبل 12 بالليل، وواقفة من 4 ساعات أو أكتر، ومفيش عربية في نص الصب.
+   الصبة اللي بدأت 9 بالليل وشغالة لحد بعد 12 بتكمل عادي على نفس الشيت. */
+function isOldDay(r) {
+  if (!(r && !r.final && !r.handedTo && r.data.header.date && r.data.header.date < today() && (r.data.rows || []).length)) return false;
+  if ((r.data.rows || []).some(function (x) { return !x.diverted && x.arrival && !x.end; })) return false;
+  return Date.now() - (r.updatedAt || 0) > 4 * 3600000;
+}
+function askRoll() {
+  if (!confirm('📅 اليوم اتغير — الصبة دي بتاريخ ' + cur.data.header.date + '.\n\nهنقفل صبة امبارح (تمضي عليها دلوقتي) ونفتح صبة النهارده لنفس العميل والموقع والمضخة.\n\nموافق؟')) return;
+  var h = JSON.parse(JSON.stringify(cur.data.header)), id = uid(), now = Date.now();
+  h.date = today(); h.technician = S.name; delete h.qty_required_m3;
+  var g = gradeAt(Math.max(0, cur.data.rows.length - 1)); if (g.gs) h.grade_strength = g.gs; if (g.cc) h.cement_content = g.cc;
+  cur.data.events.forEach(function (e) { if ((e.type === 'pump_move' || e.type === 'element_move') && e.element && !e.client) h.element = e.element; });
+  S.reports[id] = { id: id, created: now, updatedAt: now, data: { header: h, rows: [], events: [{ type: 'other', type_ar: 'ملاحظة', from: null, to: null, after_row: null, text: 'تكملة صبة ' + cur.data.header.date + ' (اليوم الجديد من 12 بالليل)' }], footer: {} } };
+  S.order.push(id); save(); rollTo = id;
+  openSig();
+}
 function finish() {
   var d = cur.data, f = d.footer || {};
   if (!f.vibrator) { toast('اختار «استخدام الهزاز»'); document.getElementById('fVib').focus(); return; }
@@ -1247,7 +1279,9 @@ function finish() {
   cur.data.header.technician = cur.data.header.technician || S.name;
   cur.data.closed = true;
   if (hasInk) { var small = document.createElement('canvas'); small.width = 500; small.height = 200; small.getContext('2d').drawImage(cv, 0, 0, 500, 200); cur.signature = small.toDataURL('image/png'); }
-  cur.final = true; touch(); sigClose(); renderReport(); syncAll(true);
+  cur.final = true; touch(); sigClose();
+  if (rollTo && S.reports[rollTo]) { cur = S.reports[rollTo]; rollTo = null; view = 'rep'; toast('✅ صبة امبارح اتقفلت — كمّل هنا'); }
+  renderReport(); window.scrollTo(0, 0); syncAll(true);
   toast(navigator.onLine ? '⏳ بيتبعت…' : '📴 اتحفظ — هيتبعت أول ما النت يرجع');
 }
 
