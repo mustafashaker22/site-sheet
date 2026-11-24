@@ -1,5 +1,5 @@
 // يخلي التطبيق يفتح من غير نت. غيّر الرقم ده مع كل نسخة جديدة.
-var V = 'site-sheet-v65';
+var V = 'site-sheet-v66';
 var FILES = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(V).then(function (c) { return c.addAll(FILES); })); self.skipWaiting(); });
 self.addEventListener('activate', function (e) {
