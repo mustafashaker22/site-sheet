@@ -218,9 +218,9 @@ function typedAlready(rows, x) {
   var xe = hm2m(x.exit);
   return (rows || []).some(function (r) {
     if (r.dispatch_id || r.diverted || tkey(r.truck) !== tkey(x.truck)) return false;
-    var re = hm2m(r.exit), ra = hm2m(r.arrival);
-    if (re !== null && xe !== null) return Math.abs(re - xe) <= 15;
-    if (ra !== null && xe !== null) return ra >= xe && ra - xe <= 240;
+    var re = hm2m(r.exit), ra = hm2m(r.arrival || r.start);
+    if (re !== null && xe !== null && Math.abs(re - xe) <= 15) return true;
+    if (ra !== null && xe !== null) return (ra - xe + 1440) % 1440 <= 360;
     return false;
   });
 }
@@ -308,6 +308,13 @@ function openRep(id) { cur = S.reports[id]; view = 'rep'; render(); window.scrol
 function goHome() { view = 'home'; cur = null; render(); }
 
 function fld(path, lab, val, attrs) { return '<div><label>' + lab + '</label><input data-p="' + path + '" value="' + esc(val) + '" ' + (attrs || '') + ' oninput="setP(this)"></div>'; }
+/* كمية العربية الواحدة مش التراكمي */
+document.addEventListener('change', function (e) {
+  var t = e.target, p = t.getAttribute && t.getAttribute('data-p');
+  if (!p || !/^rows\.\d+\.qty_m3$/.test(p)) return;
+  var v = Number(String(t.value).replace(',', '.'));
+  if (v > 12 && !confirm('⚠️ ' + v + ' م³ في عربية واحدة؟\nاكتب كمية العربية دي لوحدها (مثلاً 9) مش الإجمالي التراكمي.\n\nلو الرقم صح فعلاً ادوس «موافق».')) { t.value = ''; setP(t); }
+}, true);
 function setP(el) {
   var ps = el.getAttribute('data-p').split('.'), o = cur.data;
   for (var i = 0; i < ps.length - 1; i++) o = o[ps[i]];
@@ -438,11 +445,26 @@ document.addEventListener('change', function (e) {
   if (f === null) { toast('⚠️ الوقت غلط — اكتبه 24 ساعة، مثلاً 14:30 أو 09:05'); t.value = ''; return; }
   t.value = f;
 }, true);
-function stamp(i, k) { cur.data.rows[i][k] = nowHM(); touch(); renderReport(); }
+/* ترتيب العربيات بوقت الوصول (بيعدّي 12 بالليل صح)؛ الأحداث (نقل مضخة/تسليم/…) بتفضل بعد نفس العربية */
+function sortRows(d) {
+  var rows = d.rows || []; if (rows.length < 2) return false;
+  var ref = null; rows.forEach(function (r) { if (ref === null) ref = hm2m(r.arrival) != null ? hm2m(r.arrival) : hm2m(r.exit); });
+  function key(r) { var m = hm2m(r.arrival); if (m == null) return Infinity; if (ref != null && m < ref - 360) m += 1440; return m; }
+  var a = rows.map(function (r, i) { return { r: r, i: i, k: key(r) }; });
+  a.sort(function (x, y) { return x.k - y.k || x.i - y.i; });
+  if (a.every(function (x, j) { return x.i === j; })) return false;
+  var ni = {}; a.forEach(function (x, j) { ni[x.i] = j; });
+  (d.events || []).forEach(function (e) { if (e.after_row && ni[e.after_row - 1] != null) e.after_row = ni[e.after_row - 1] + 1; });
+  d.rows = a.map(function (x) { return x.r; });
+  return true;
+}
+function stamp(i, k) { cur.data.rows[i][k] = nowHM(); if (k === 'arrival') sortRows(cur.data); touch(); renderReport(); }
 function setT(i, k, v) {
   var r = cur.data.rows[i];
   if (k === 'exit' && v && r.arrival && v > r.arrival && !confirm('وقت الخروج ' + v + ' بعد وقت الوصول ' + r.arrival + '. متأكد؟')) { renderReport(); return; }
-  r[k] = v || null; touch(); renderAlerts();
+  r[k] = v || null;
+  if (k === 'arrival' && sortRows(cur.data)) { touch(); renderReport(); return; }
+  touch(); renderAlerts();
 }
 function brokenLocal(id) { var b = (cur.data.broken || []).filter(function (y) { return y.dispatch_id === id; })[0]; return b ? b.note : ''; }
 function broke(id) {
@@ -459,9 +481,12 @@ function broke(id) {
 function arrived(id) {
   if (isOldDay(cur)) return askRoll();
   var x = (cur.incoming || []).filter(function (y) { return y.id === id; })[0]; if (!x) return;
+  var ag = since(x.exit);
+  if (ag != null && ag > 180 && !confirm('⚠️ العربية ' + (x.truck || '') + ' خرجت من المحطة ' + x.exit + ' (من ' + Math.floor(ag / 60) + ' ساعة و' + (ag % 60) + ' دقيقة).\nمتأكد إنها وصلت عندك دلوقتي؟\n\nلو مش جاية عندك ادوس «إلغاء».')) return;
   var br = x.broken || brokenLocal(id);
   cur.data.rows.push({ truck: x.truck, driver: x.driver, qty_m3: Number(x.qty_m3) || x.qty_m3, exit: x.exit, arrival: nowHM(), dispatch_id: x.id, ticket: x.ticket || null, exit_slump: (x.exit_slump === '' || x.exit_slump == null) ? null : x.exit_slump,
     breakdown: br || null, note: br ? 'كانت عطلانة: ' + br : null });
+  sortRows(cur.data);
   touch(); renderReport();
 }
 function addTruck() {
