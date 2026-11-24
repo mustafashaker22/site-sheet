@@ -305,7 +305,8 @@ function newReport() {
   S.reports[id] = { id: id, created: Date.now(), updatedAt: Date.now(), data: { header: { date: today(), technician: S.name, pour_method: 'مضخة' }, rows: [], events: [], footer: {} } };
   S.order.push(id); save(); cur = S.reports[id]; view = 'head'; render();
 }
-function openRep(id) { cur = S.reports[id]; view = 'rep'; render(); window.scrollTo(0, 0); cur.lastPing = 0; syncAll(false); }
+var expandedRows = new WeakSet();
+function openRep(id) { cur = S.reports[id]; expandedRows = new WeakSet(); view = 'rep'; render(); setTimeout(function () { var el = document.getElementById('lastRow'); if (el) { el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -80); } }, 30); cur.lastPing = 0; syncAll(false); }
 function goHome() { view = 'home'; cur = null; render(); }
 
 function fld(path, lab, val, attrs) { return '<div><label>' + lab + '</label><input data-p="' + path + '" value="' + esc(val) + '" ' + (attrs || '') + ' oninput="setP(this)"></div>'; }
@@ -642,8 +643,9 @@ function renderReport() {
   html += '<div id="alerts"></div>';
   var added = {}; d.rows.forEach(function (r) { if (r.dispatch_id) added[r.dispatch_id] = 1; });
   var inc = (cur.incoming || []).filter(function (x) { return !added[x.id] && !typedAlready(d.rows, x); });
-  if (!ro && !inc.length) html += '<div class="muted" style="margin:6px 12px">🚚 مفيش عربيات متسجلة خارجة لـ «' + esc(h.client) + '» من المحطة لسه. <a href="#" onclick="cur.lastPing=0;syncAll(true);toast(\'⏳ بيدوّر…\');return false">🔄 دوّر تاني</a></div>';
-  if (inc.length && !ro) html += '<div class="card" style="border-right:5px solid var(--b)"><h3>🚚 جاية من المحطة</h3>' + inc.map(function (x) {
+  var incHtml = '';
+  if (!ro && !inc.length) incHtml += '<div class="muted" style="margin:6px 12px">🚚 مفيش عربيات متسجلة خارجة لـ «' + esc(h.client) + '» من المحطة لسه. <a href="#" onclick="cur.lastPing=0;syncAll(true);toast(\'⏳ بيدوّر…\');return false">🔄 دوّر تاني</a></div>';
+  if (inc.length && !ro) incHtml += '<div class="card" style="border-right:5px solid var(--b)"><h3>🚚 جاية من المحطة</h3>' + inc.map(function (x) {
     var br = x.broken || brokenLocal(x.id);
     return '<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee"><div><b>' + esc(x.truck) + '</b> · ' + esc(x.qty_m3 || '') + ' م³' +
       (br ? ' <span class="badge">🛠 عطلانة</span>' : '') + (x.otherSite ? ' <span class="badge y">لموقع: ' + esc(x.otherSite) + '</span>' : '') + '<br><span class="muted">خرجت ' + esc(x.exit) + ' (' + since(x.exit) + ' د)' + ' · ' + esc(x.driver || '') + (br ? ' · ' + esc(br) : '') + '</span></div>' +
@@ -663,7 +665,14 @@ function renderReport() {
     var st = r.diverted ? '<span class="badge y">اتحولت</span>' : r.end ? '<span class="badge g">✓ خلصت</span>' : r.start ? '<span class="badge g">▶ بتصب</span>' : r.arrival ? '<span class="badge">⏳ ' + since(r.arrival) + ' د</span>' : '';
     // أحداث بعد العربية اللي قبلها
     var dupW = dupWarn(d.rows, i) + (lateMin(r) ? '<div style="margin:2px 0">' + lateTag(r) + '</div>' : '');
-    html += '<div class="card' + (r.end ? ' done' : '') + '"><h3><span>🚛 عربية ' + (i + 1) + ' ' + st + '</span>' + (ro ? '' : '<button class="mini del" onclick="delTruck(' + i + ')">حذف</button>') + '</h3>' + dupW +
+    if (r.end && !r.diverted && !expandedRows.has(r) && !dupW) {
+      html += '<div' + (i === d.rows.length - 1 ? ' id="lastRow"' : '') + ' class="card done" style="padding:8px 12px;display:flex;justify-content:space-between;align-items:center;gap:6px"><div><b>✓ ' + (i + 1) + ' · ' + esc(r.truck || '؟') + '</b> · ' + esc(r.qty_m3 || '') + ' م³ · <span class="muted">' +
+        esc(r.exit || '--') + ' ← ' + esc(r.arrival || '--') + ' ← ' + esc(r.start || '--') + ' ← ' + esc(r.end) + (r.slump != null ? ' · هبوط ' + esc(r.slump) : '') + '</span></div>' +
+        '<button class="btn l mini" onclick="expandedRows.add(cur.data.rows[' + i + ']);renderReport()">' + (ro ? '👁' : '✏️') + '</button></div>';
+      d.events.forEach(function (e, j) { if (+e.after_row === i + 1) html += evCard(e, j, ro); });
+      return;
+    }
+    html += '<div class="card' + (r.end ? ' done' : '') + '"' + (i === d.rows.length - 1 ? ' id="lastRow"' : '') + '><h3><span>🚛 عربية ' + (i + 1) + ' ' + st + '</span>' + (ro ? '' : '<button class="mini del" onclick="delTruck(' + i + ')">حذف</button>') + '</h3>' + dupW +
       '<div class="g3">' + selF('rows.' + i + '.truck', 'رقم العربية', r.truck, L('trucks'), dis) + selF('rows.' + i + '.driver', 'السائق', r.driver, L('drivers'), dis) + fld('rows.' + i + '.qty_m3', 'الكمية م³', r.qty_m3, 'inputmode="decimal" data-n' + dis) + '</div>' +
       '<div class="g4" style="margin-top:8px">' + timeCell(i, 'exit', 'خروج (من البون)', '🚚') + timeCell(i, 'arrival', 'وصول', '📍') + timeCell(i, 'start', 'بداية الصب', '▶️') + timeCell(i, 'end', 'نهاية الصب', '⏹') + '</div>' +
       '<div class="g4" style="margin-top:8px">' + fld('rows.' + i + '.slump', 'الهبوط', r.slump, 'inputmode="decimal" data-n' + dis) + fld('rows.' + i + '.temp', 'الحرارة', r.temp, 'inputmode="decimal"' + dis) +
@@ -674,6 +683,7 @@ function renderReport() {
     d.events.forEach(function (e, j) { if (+e.after_row === i + 1) html += evCard(e, j, ro); });
   });
   d.events.forEach(function (e, j) { if (!e.after_row) html += evCard(e, j, ro); });
+  html += incHtml;   // الجاية من المحطة تحت، جنب آخر عربية وزرار «عربية جديدة»
   if (!ro) {
     html += '<div style="padding:0 10px"><button class="btn big" onclick="addTruck()">➕ عربية جديدة وصلت</button></div>';
     html += '<div class="g3" style="padding:10px"><button class="btn l" onclick="newPump()">🔧 نقل مضخة</button><button class="btn l" onclick="addEvent(\'stop\')">⏸ وقفة / مشكلة</button><button class="btn l" onclick="addEvent(\'other\')">📝 ملاحظة</button></div>';
