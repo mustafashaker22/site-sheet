@@ -151,6 +151,7 @@ function syncAll(force) {
         liveMsgs[r.id] = res.live || [];
         if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists;
         r.incoming = res.incoming || []; notifyNew(r);
+        if (res.ddates && fillDates(r.data, res.ddates) && !r.final && sortRows(r.data, r.created)) { r.updatedAt = Date.now(); save(); if (view === 'rep' && cur === r) renderReport(); }
       } else if (res && res.handedOver && !sameName(res.owner, S.name)) { r.handedTo = res.owner; save(); toast('🔁 الصبة دي اتسلمت لـ ' + res.owner); }
       else if (res && res.auth === false) { toast('❌ الكود اتوقف — كلم المدير'); }
       else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
@@ -462,6 +463,17 @@ function dupWarn(rows, i) {
 }
 function dayNum(s) { var p = String(s || '').split('-'); return p.length === 3 ? Date.UTC(+p[0], +p[1] - 1, +p[2]) / 864e5 : 0; }
 function yday() { var d = new Date(Date.now() - 864e5); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+/* تواريخ العربيات المربوطة بخروج من المحطة (من السيرفر) */
+function fillDates(d, dd) {
+  var ch = false;
+  (d.rows || []).forEach(function (x) {
+    if (x.arrDate || !x.dispatch_id || !dd[x.dispatch_id] || !x.arrival) return;
+    var dt = dd[x.dispatch_id];
+    if (hm2m(x.arrival) < hm2m(x.exit || '00:00') - 60) dt = new Date(Date.UTC(+dt.slice(0, 4), +dt.slice(5, 7) - 1, +dt.slice(8, 10)) + 864e5).toISOString().slice(0, 10);
+    x.arrDate = dt; ch = true;
+  });
+  return ch;
+}
 function sortRows(d, created) {
   var rows = d.rows || []; if (rows.length < 2) return false;
   // بداية اليوم بتاع الصبة = وقت فتحها ناقص ساعتين؛ أي وقت قبله يبقى بعد 12 بالليل
