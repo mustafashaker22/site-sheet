@@ -116,7 +116,9 @@ function syncAll(force) {
   if (syncing || !navigator.onLine || !S.api || !S.code) return;
   if (S.role === 'sup') { if ((S.prod || []).some(function (d) { return !d.synced; }) || force) syncProd(false); if ((S.siloQ || []).some(function (d) { return !d.synced; })) syncSilo(false); return syncDispatch(force); }
   var ids = S.order.filter(function (id) {
-    var r = S.reports[id]; if (!r || r.closedSynced || r.handedTo) return false;
+    var r = S.reports[id]; if (!r || r.closedSynced) return false;
+    // صبة اتسلمت وفيها حاجات اتسجلت من غير نت: نبعتها مرة واحدة عشان السيرفر يبلّغ اللي استلم
+    if (r.handedTo) return !r.lostSent && r.updatedAt > (r.syncedAt || 0);
     if (!r.sid && !(r.data.rows || []).length && !(r.data.events || []).length && !r.final) return false;
     var stale = Date.now() - (r.lastPing || 0) > 3 * 60000; // نبعت كل 3 دقايق للتنبيهات اللحظية
     return r.updatedAt > (r.syncedAt || 0) || (force && !r.final) || (!r.final && stale);
@@ -157,7 +159,10 @@ function syncAll(force) {
         if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists;
         r.incoming = res.incoming || []; notifyNew(r);
         if (res.ddates && fillDates(r.data, res.ddates) && !r.final && sortRows(r.data, r.created)) { r.updatedAt = Date.now(); save(); if (view === 'rep' && cur === r) renderReport(); }
-      } else if (res && res.handedOver && !sameName(res.owner, S.name)) { r.handedTo = res.owner; save(); toast('🔁 الصبة دي اتسلمت لـ ' + res.owner); }
+      } else if (res && res.handedOver && !sameName(res.owner, S.name)) {
+        r.handedTo = res.owner; r.lostSent = true; save();
+        toast(res.lost ? '⚠️ عندك ' + res.lost + ' عربية في الصبة دي ماوصلتش قبل التسليم — اتبعتت لـ ' + res.owner + ' والمدير عشان يضيفوها' : '🔁 الصبة دي اتسلمت لـ ' + res.owner);
+      }
       else if (res && res.auth === false) { toast('❌ الكود اتوقف — كلم المدير'); }
       else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
       next();
@@ -279,6 +284,7 @@ function restoreMine(announce) {
   if (S.role === 'sup' || !navigator.onLine) return;
   api({ action: 'open', code: S.code }).then(function (r) {
     if (!r || !r.ok) return;
+    S.openCache = r.open || [];
     var mine = (r.open || []).filter(function (o) { return o.owner === S.name && !S.reports[o.repId]; });
     if (!mine.length) return;
     var n = 0;
@@ -304,6 +310,23 @@ function cleanup() {
   var n = 0;
   S.order = S.order.filter(function (id) { var r = S.reports[id]; if (r && r.closedSynced && Date.now() - r.updatedAt > 3 * 86400000) { delete S.reports[id]; n++; return false; } return true; });
   save(); render(); toast(n ? 'اتمسح ' + n : 'مفيش حاجة قديمة تتمسح');
+}
+/** قبل ما الصبة الجديدة تبدأ: فيه صبة مفتوحة لنفس العميل والموقع؟ (زي ما حصل لما المضخة عطلت ومضخة تانية جت مكانها) */
+function headNext() {
+  var h = cur.data.header; if (!h.client) return toast('اختار العميل');
+  function go() { view = 'rep'; render(); syncAll(true); }
+  if (cur.sid || (cur.data.rows || []).length) return go();   // صبة قديمة بنعدّل الهيدر بتاعها
+  function same(o) { return o && sameName(o.client, h.client) && (!o.site || !h.site || sameName(o.site, h.site)); }
+  function ask(list) {
+    var o = (list || []).filter(function (x) { return x.repId !== cur.id && same(x); })[0];
+    var loc = S.order.map(function (id) { return S.reports[id]; }).filter(function (r) { return r && r !== cur && !r.final && !r.handedTo && same((r.data || {}).header); })[0];
+    if (!o && !loc) return go();
+    var who = o ? ('#' + (o.sid || '') + ' مع ' + o.owner + ' (' + (o.element || '') + ' · ' + o.trucks + ' عربية' + (o.last ? ' · آخر تسجيل ' + o.last : '') + ')') : ('مفتوحة عندك على الموبايل (' + ((loc.data.header || {}).element || '') + ')');
+    if (confirm('⚠️ فيه صبة مفتوحة لنفس الموقع: ' + who + '\n\nلو المضخة عطلت واتغيرت، أو بتكمّل نفس الصب:\nمتفتحش صبة جديدة — ' + (o && !sameName(o.owner, S.name) ? 'استلمها من «🔁 استلام صبة شغالة» وسجّل فيها «🔧 تغيير المضخة».' : 'افتحها وسجّل فيها «🔧 تغيير المضخة».') +
+      '\n\nدوس «إلغاء» عشان ترجع، أو «موافق» لو دي فعلاً صبة تانية (مضخة شغالة في نفس الوقت على عنصر تاني).')) go();
+  }
+  if (navigator.onLine) api({ action: 'open', code: S.code }).then(function (r) { if (r && r.ok) { S.openCache = r.open || []; save(); } ask(r && r.ok ? r.open : S.openCache); }).catch(function () { ask(S.openCache); });
+  else ask(S.openCache);
 }
 function newReport() {
   var id = uid();
@@ -406,7 +429,7 @@ function renderHeader() {
     '<div><label>طريقة الصب</label><select data-p="header.pour_method" onchange="setP(this)">' + ['مضخة', 'مزراب'].map(function (x) { return '<option' + (h.pour_method === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
     selF('header.pump_id', 'رقم المضخة', h.pump_id, L('pumps')) + selF('header.operator', 'المشغل', h.operator, L('operators')) + fld('header.site_manager', 'مسئول الموقع', h.site_manager) +
     fld('header.distance_km', 'المسافة كم', h.distance_km, 'inputmode="decimal" data-n') + '</div></div>' +
-    '<div class="bar">' + (!(cur.data.rows || []).length ? '<button class="btn l" style="width:32%" onclick="cancelNew()">✕ إلغاء</button>' : '') + '<button class="btn g big" onclick="if(!cur.data.header.client){toast(\'اختار العميل\');return}view=\'rep\';render();syncAll(true)">التالي ← العربيات</button></div>';
+    '<div class="bar">' + (!(cur.data.rows || []).length ? '<button class="btn l" style="width:32%" onclick="cancelNew()">✕ إلغاء</button>' : '') + '<button class="btn g big" onclick="headNext()">التالي ← العربيات</button></div>';
 }
 
 function liveLocal() {
@@ -1596,7 +1619,7 @@ render();
 syncAll(true);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
 // ===== تحديث التطبيق: الموبايل بيسيب التطبيق مفتوح في الخلفية بالنسخة القديمة؛ نشيك على GitHub ونطلّع زرار تحديث =====
-var APP_V = 'site-sheet-v72', updShown = false;
+var APP_V = 'site-sheet-v74', updShown = false;
 function checkUpdate() {
   if (!navigator.onLine || updShown) return;
   fetch('sw.js?x=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
