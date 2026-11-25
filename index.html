@@ -773,7 +773,7 @@ var pumpForm = null;
 function newPump() {
   if (isOldDay(cur)) return askRoll();
   var g = gradeAt(Math.max(0, cur.data.rows.length - 1)), h = cur.data.header;
-  pumpForm = { kind: 'same', cause: '', element: '', gs: g.gs, cc: g.cc, old: g, client: '', site: '', cElement: '', cgs: h.grade_strength || '', ccc: h.cement_content || '' };
+  pumpForm = { kind: 'same', cause: '', element: '', gs: g.gs, cc: g.cc, old: g, client: '', site: '', cElement: '', cgs: h.grade_strength || '', ccc: h.cement_content || '', pump: curPump(cur.data), oldPump: curPump(cur.data) };
   view = 'pump'; render(); window.scrollTo(0, 0);
 }
 function pumpSel(k, lab, v, opts) {
@@ -783,6 +783,8 @@ function pumpSel(k, lab, v, opts) {
 }
 function pumpPair(k) { var v = pumpForm[k], pr = ((S.lists || {}).pairs || []).filter(function (x) { return x[0] === String(v); }); if (pr.length === 1) pumpForm[k === 'gs' ? 'cc' : 'ccc'] = pr[0][1]; }
 function pickPumpC(k, v) { pumpForm[k] = v; renderPump(); }
+/** المضخة الشغالة دلوقتي في الصبة: رقم المضخة في الشيت، وبعدها آخر «تغيير المضخة» */
+function curPump(d) { var p = ((d && d.header) || {}).pump_id || ''; ((d && d.events) || []).forEach(function (e) { if (e.pump_id) p = e.pump_id; }); return String(p || ''); }
 function renderPump() {
   var f = pumpForm;
   function inp(k, lab, attrs) { return '<div><label>' + lab + '</label><input value="' + esc(f[k]) + '" oninput="pumpForm[\'' + k + '\']=this.value" ' + (attrs || '') + '></div>'; }
@@ -794,6 +796,8 @@ function renderPump() {
     html += '<datalist id="els">' + elementsUsed().map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>' +
       '<div style="margin-top:8px"><label>العنصر بعد النقل (فاضي = نفس العنصر)</label><input list="els" value="' + esc(f.element) + '" oninput="pumpForm.element=this.value" placeholder="مثلاً: أعمدة الدور التاني"></div>' +
       '<div class="g2" style="margin-top:8px">' + pumpSel('gs', 'الإجهاد', f.gs, L('grades')) + pumpSel('cc', 'الأسمنت', f.cc, L('cements')) + '</div>' +
+      '<div class="g2" style="margin-top:8px">' + pumpSel('pump', 'رقم المضخة (لو اتغيرت)', f.pump, L('pumps')) + '<div></div></div>' +
+      (String(f.pump || '') !== String(f.oldPump || '') ? '<div class="alert y" style="margin-top:8px">🔧 هيتسجل إن المضخة اتغيرت من ' + esc(f.oldPump || '؟') + ' لـ ' + esc(f.pump || '؟') + ' — العربيات الجاية هتتحسب على المضخة الجديدة.</div>' : '') +
       (changed ? '<div class="alert y" style="margin-top:8px">⚠️ هيتسجل إن الجهد اتغير من ' + esc(f.old.gs || '؟') + '/' + esc(f.old.cc || '؟') + ' لـ ' + esc(f.gs || '؟') + '/' + esc(f.cc || '؟') + ' — العربيات الجاية هتتحسب على الجهد الجديد.</div>' : '');
   } else {
     html += '<p class="muted" style="margin-top:8px">الصبة دي هتخلص هنا، وهيتفتح سايت شيت جديد للعميل التاني بنفس المضخة والمشغل.</p>' + clientSelects(f.client, f.site, 'pickPumpC') +
@@ -806,9 +810,10 @@ function savePump() {
   var f = pumpForm, d = cur.data, h = d.header, t = nowHM(), num = function (v) { return Number(v) || v || null; };
   if (f.kind === 'same') {
     var el = String(f.element || '').trim(), changed = String(f.gs || '') !== String(f.old.gs || '') || String(f.cc || '') !== String(f.old.cc || '');
-    var txt = [f.cause, el ? 'النقل لـ ' + el : '', changed ? 'تم تغيير الجهد من ' + (f.old.gs || '؟') + '/' + (f.old.cc || '؟') + ' لـ ' + (f.gs || '؟') + '/' + (f.cc || '؟') : ''].filter(Boolean).join(' — ');
-    var ev = { type: 'pump_move', type_ar: 'نقل المضخة', from: t, to: null, after_row: d.rows.length || null, text: txt, cause: f.cause || '', _askEl: 1 };
-    ev.element = el || null;
+    var pch = String(f.pump || '') !== String(f.oldPump || '') && f.pump;
+    var txt = [f.cause, el ? 'النقل لـ ' + el : '', changed ? 'تم تغيير الجهد من ' + (f.old.gs || '؟') + '/' + (f.old.cc || '؟') + ' لـ ' + (f.gs || '؟') + '/' + (f.cc || '؟') : '', pch ? 'تغيير المضخة من ' + (f.oldPump || '؟') + ' لـ ' + f.pump : ''].filter(Boolean).join(' — ');
+    var ev = { type: 'pump_move', type_ar: pch && !el && !changed ? 'تغيير المضخة' : 'نقل المضخة', from: t, to: null, after_row: d.rows.length || null, text: txt, cause: f.cause || '', _askEl: 1 };
+    ev.element = el || null; if (pch) ev.pump_id = f.pump;
     ev.grade_strength = num(f.gs); ev.cement_content = num(f.cc);
     d.events.push(ev);
     pumpForm = null; touch(); view = 'rep'; render(); return;
@@ -826,7 +831,7 @@ function savePump() {
   touch();
   var id = uid(), now = Date.now();
   S.reports[id] = { id: id, created: now, updatedAt: now, data: {
-    header: { date: today(), technician: S.name, pour_method: h.pour_method || 'مضخة', pump_id: h.pump_id || null, operator: h.operator || null,
+    header: { date: today(), technician: S.name, pour_method: h.pour_method || 'مضخة', pump_id: curPump(cur.data) || h.pump_id || null, operator: h.operator || null,
       client: f.client, site: f.site || null, element: f.cElement || null, grade_strength: num(f.cgs), cement_content: num(f.ccc) },
     rows: [], events: [{ type: 'other', type_ar: 'ملاحظة', from: null, to: null, after_row: null, text: 'المضخة جاية من صبة ' + (h.client || '') + (h.site ? ' — ' + h.site : '') + ' الساعة ' + t }], footer: {} } };
   S.order.push(id); save(); pumpForm = null;
@@ -868,6 +873,14 @@ function takeOver(repId, owner, silent) {
     if (S.order.indexOf(repId) < 0) S.order.push(repId);
     save();
     if (silent) return;
+    // عند الاستلام: المضخة اتغيرت؟ (بيحصل إن المضخة تتبدل مع الوردية)
+    var rp = S.reports[repId], pNow = curPump(rp.data), np = prompt('🔧 المضخة اللي شغالة دلوقتي في الصبة دي؟\n(سيبها زي ما هي لو ما اتغيرتش)', pNow);
+    if (np !== null && String(np).trim() && String(np).trim() !== pNow) {
+      np = String(np).trim().toUpperCase();
+      rp.data.events = rp.data.events || [];
+      rp.data.events.push({ type: 'pump_move', type_ar: 'تغيير المضخة', from: nowHM(), to: null, after_row: (rp.data.rows || []).length || null, pump_id: np, text: 'تغيير المضخة من ' + (pNow || '؟') + ' لـ ' + np + ' عند الاستلام', cause: 'استلام' });
+      rp.updatedAt = Date.now(); save();
+    }
     // الفني اللي بيسلّم عنده صبات تانية مفتوحة؟ (زي صبة قديمة نسي يقفلها) — يستلمها هي كمان عشان متفضلش على اسمه
     var more = (openList || []).filter(function (o) { return o.repId !== repId && sameName(o.owner, owner); }), chain = Promise.resolve();
     more.forEach(function (o) {
@@ -1583,7 +1596,7 @@ render();
 syncAll(true);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
 // ===== تحديث التطبيق: الموبايل بيسيب التطبيق مفتوح في الخلفية بالنسخة القديمة؛ نشيك على GitHub ونطلّع زرار تحديث =====
-var APP_V = 'site-sheet-v71', updShown = false;
+var APP_V = 'site-sheet-v72', updShown = false;
 function checkUpdate() {
   if (!navigator.onLine || updShown) return;
   fetch('sw.js?x=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
