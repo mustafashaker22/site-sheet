@@ -148,6 +148,11 @@ function syncAll(force) {
       if (res && res.ok) {
         r.syncedAt = sentAt; r.lastPing = Date.now(); r.sid = res.sid;
         if (r.final && res.final) { r.closedSynced = true; delete r.signature; }
+        else if (res.final && !r.final) {   // المدير قفلها من عنده
+          r.final = true; r.closedSynced = true; r.mgrClosed = true; save();
+          toast('🔒 الصبة #' + (res.sid || '') + ' اتقفلت من المدير — لو لسه شغال افتح صبة جديدة');
+          if (view === 'rep' && cur === r) goHome();
+        }
         liveMsgs[r.id] = res.live || [];
         if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists;
         r.incoming = res.incoming || []; notifyNew(r);
@@ -529,7 +534,9 @@ function broke(id) {
 }
 /** العربية الجاية خلطتها غير رتبة الصبة (مثلاً 250 والصبة 300) */
 function mixWrong(x) {
-  var h = (cur && cur.data && cur.data.header) || {}, m = x.mix || (x.grade && mixBy(String(x.grade)));
+  var h0 = (cur && cur.data && cur.data.header) || {}, m = x.mix || (x.grade && mixBy(String(x.grade)));
+  var h = { grade_strength: h0.grade_strength, cement_content: h0.cement_content };   // آخر جهد بعد نقل المضخة وتغيير الجهد
+  ((cur && cur.data && cur.data.events) || []).forEach(function (e) { if (e.grade_strength) { h.grade_strength = e.grade_strength; h.cement_content = e.cement_content || ''; } });
   if (!m || !h.grade_strength || !Number(m.g || m.grade)) return '';
   var g = Number(m.g || m.grade), c = Number(m.c || m.cement);
   if (g === Number(h.grade_strength) && (!h.cement_content || !c || c === Number(h.cement_content))) return '';
@@ -807,6 +814,12 @@ function savePump() {
     pumpForm = null; touch(); view = 'rep'; render(); return;
   }
   if (!f.client) return toast('اختار العميل');
+  // «عميل تاني» وهو نفس العميل ونفس الموقع: ده نقل داخل نفس الصبة (عنصر/جهد جديد)، مش شيت جديد
+  if (sameName(f.client, h.client) && (!f.site || !h.site || sameName(f.site, h.site))) {
+    f.kind = 'same'; f.element = f.cElement || f.element; if (f.cgs) f.gs = f.cgs; if (f.ccc) f.cc = f.ccc;
+    alert('ده نفس العميل ونفس الموقع (' + h.client + (h.site ? ' — ' + h.site : '') + ').\nالنقل هيتسجل في نفس السايت شيت، ويتكتب العنصر الجديد وتغيير الجهد لو اتغير.\n\nراجع البيانات ودوس «سجّل النقل».');
+    return renderPump();
+  }
   var who = f.client + (f.site ? ' — ' + f.site : '');
   d.events.push({ type: 'pump_move', type_ar: 'نقل المضخة لعميل تاني', from: t, to: null, after_row: d.rows.length || null, client: f.client,
     text: (f.cause ? f.cause + ' — ' : '') + 'المضخة اتنقلت لـ ' + who + (f.cElement ? ' (' + f.cElement + ')' : '') + ' — الصبة دي خلصت هنا', cause: f.cause || '' });
@@ -833,7 +846,7 @@ function showOpen() {
   toast('⏳ بيجيب الصبات الشغالة…');
   api({ action: 'open', code: S.code }).then(function (r) {
     if (!r.ok) return toast('❌ ' + (r.error || ''));
-    var list = r.open || [];
+    var list = r.open || []; openList = list;
     var h = '<div class="card"><h3>🔁 الصبات الشغالة دلوقتي</h3>' + (list.length ? '' : '<p class="muted">مفيش صبات شغالة على السيرفر.<br>الصبة بتوصل للسيرفر بعد ما الفني يضيف أول عربية، وموبايله يكون عليه نت.</p>') + '</div><div class="card list" style="padding:0">' +
       list.map(function (o) {
         if (sameName(o.owner, S.name)) return '<div class="it" onclick="restoreMine();toast(\'⏳ …\');setTimeout(goHome,2500)"><div><b>' + esc(o.client) + '</b> · ' + esc(o.element) +
@@ -845,14 +858,25 @@ function showOpen() {
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 function sameName(a, b) { function n(x) { return String(x || '').replace(/[\s\u200f\u200e\u0640]+/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه'); } return n(a) === n(b); }
-function takeOver(repId, owner) {
-  if (!confirm('تستلم الصبة دي من ' + owner + '؟ هتكمّل أنت عليها ومش هيقدر يعدّل فيها بعد كده.')) return;
-  api({ action: 'takeover', code: S.code, repId: repId }).then(function (r) {
+var openList = [];
+function takeOver(repId, owner, silent) {
+  if (!silent && !confirm('تستلم الصبة دي من ' + owner + '؟ هتكمّل أنت عليها ومش هيقدر يعدّل فيها بعد كده.')) return;
+  return api({ action: 'takeover', code: S.code, repId: repId }).then(function (r) {
     if (!r.ok) return toast('❌ ' + (r.error || ''));
     var now = Date.now();
     S.reports[repId] = { id: repId, created: r.created || now, sid: r.sid, data: r.data, updatedAt: now, syncedAt: now, lastPing: 0 };
     if (S.order.indexOf(repId) < 0) S.order.push(repId);
-    save(); openRep(repId); toast('✅ استلمت الصبة');
+    save();
+    if (silent) return;
+    // الفني اللي بيسلّم عنده صبات تانية مفتوحة؟ (زي صبة قديمة نسي يقفلها) — يستلمها هي كمان عشان متفضلش على اسمه
+    var more = (openList || []).filter(function (o) { return o.repId !== repId && sameName(o.owner, owner); }), chain = Promise.resolve();
+    more.forEach(function (o) {
+      chain = chain.then(function () {
+        if (confirm('⚠️ ' + owner + ' عنده كمان صبة مفتوحة:\n' + o.client + ' · ' + (o.element || '') + ' · ' + o.trucks + ' عربية' + (o.last ? ' · آخر تسجيل ' + o.last : '') +
+          '\n\nتستلمها هي كمان؟\n(لو خلصت: استلمها وأنهيها، أو قول للمدير يقفلها)')) return takeOver(o.repId, owner, true);
+      });
+    });
+    chain.then(function () { openRep(repId); toast('✅ استلمت الصبة' + (more.length ? ' — شوف الصبات في الصفحة الرئيسية' : '')); });
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 
@@ -1054,7 +1078,7 @@ function renderProdRep() {
   else if (repData.err) h += '<p class="center" style="color:#c0392b">⚠️ ' + esc(repData.err) + '</p><div style="padding:0 10px"><button class="btn l" style="width:100%" onclick="repData=null;renderProdRep();loadProdRep()">🔄 جرّب تاني</button></div>';
   else {
     var R = repData.rep;
-    h += '<div class="card"><div class="g3" style="text-align:center"><div><div class="muted">إنتاج اليوم</div><b style="font-size:1.6em">' + R.total + '</b> م³</div><div><div class="muted">تراكمي الشهر</div><b style="font-size:1.6em">' + R.cum + '</b></div><div><div class="muted">متوسط اليوم</div><b style="font-size:1.6em">' + R.avg + '</b>' + (R.days ? '<div class="muted">على ' + R.days + ' يوم شغل</div>' : '') + '</div></div></div>' +
+    h += '<div class="card"><div class="g3" style="text-align:center"><div><div class="muted">إنتاج اليوم</div><b style="font-size:1.6em">' + R.total + '</b> م³</div><div><div class="muted">تراكمي الشهر</div><b style="font-size:1.6em">' + R.cum + '</b></div><div><div class="muted">متوسط اليوم</div><b style="font-size:1.6em">' + R.avg + '</b>' + (R.days ? '<div class="muted">÷ ' + R.days + ' يوم من الشهر</div>' : '') + '</div></div></div>' +
       '<div class="card"><table style="width:100%;border-collapse:collapse;font-size:.9em"><tr style="background:#eef1f4"><th>العميل</th><th>الموقع</th><th>الخلطة</th><th>م³</th><th>إضافة</th><th>المضخات</th></tr>' +
       R.rows.map(function (g) {
         return '<tr style="border-bottom:1px solid #eee"><td>' + esc(g.client) + (g.sub ? '<br><span class="muted">' + esc(g.sub) + '</span>' : '') + '</td><td>' + esc(g.site || '') + '</td><td>' + esc(g.mix || '') + '</td><td><b>' + g.qty + '</b></td><td>' + esc(g.adm) + (g.siteL ? '<br><span class="muted">موقع ' + g.siteL + ' L</span>' : '') + ((g.warn || []).length ? '<br><span style="color:#c0392b;font-size:.85em">⚠️ ' + esc(g.warn.join(' · ')) + '</span>' : '') + '</td><td>' +
@@ -1148,6 +1172,11 @@ function mgrSavePour() {
     if (!r || !r.ok) return toast('❌ ' + ((r && r.error) || 'مشكلة'));
     toast('✅ اتحفظ' + (r.diff && r.diff.length ? ': ' + r.diff.join(' · ') : '')); var sid = cur.mgrSid; delete S.reports[cur.id]; cur = null; viewPour(sid);
   }).catch(function () { toast('❌ محتاج نت'); });
+}
+function mgrClose(sid) {
+  var why = prompt('الصبة #' + sid + ' هتتقفل على إنها خلصت (الفني مقفلهاش).\nاكتب السبب:', 'الصبة خلصت والفني مقفلهاش');
+  if (why === null) return;
+  api({ action: 'mgrclose', code: S.code, sid: sid, why: why }).then(function (r) { if (!r || !r.ok) return alert('⚠️ ' + ((r && r.error) || 'السيرفر رجّع رد غلط — اتأكد إن Code.gs الجديد اتنشر')); toast('🔒 اتقفلت'); viewPour(sid); }).catch(function () { toast('❌ محتاج نت'); });
 }
 function mgrApprove(sid) {
   if (!confirm('تعتمد السايت شيت #' + sid + '؟')) return;
@@ -1384,7 +1413,7 @@ function viewPour(sid) {
     if (r.printUrl) h += '<div style="padding:0 10px"><a class="btn l" style="display:block;text-align:center;text-decoration:none" target="_blank" href="' + esc(r.printUrl) + '">🖨 السايت شيت</a></div>';
     h += '<div style="padding:6px 10px 0">' + xlsxBtn('site', sid, 'Excel السايت شيت') + '</div>';
     if (S.mgr) h += '<div style="padding:0 10px" class="g2"><button class="btn g" onclick="mgrOpenPour(' + sid + ')">👁 افتحها زي الفني / عدّل</button>' +
-      (d.qa ? '<span class="st f" style="text-align:center;padding:10px">✅ معتمدة — ' + esc(d.qa.name) + '</span>' : r.status === 'مأكد' ? '<button class="btn" onclick="mgrApprove(' + sid + ')">✅ اعتماد</button>' : '<span></span>') + '</div>' +
+      (d.qa ? '<span class="st f" style="text-align:center;padding:10px">✅ معتمدة — ' + esc(d.qa.name) + '</span>' : r.status === 'مأكد' ? '<button class="btn" onclick="mgrApprove(' + sid + ')">✅ اعتماد</button>' : '<button class="btn r" onclick="mgrClose(' + sid + ')">🔒 قفل الصبة (خلصت)</button>') + '</div>' +
       ((d.edits || []).length ? '<div class="card"><b>✏️ تعديلات المدير:</b><br>' + d.edits.map(function (e) { return '<span class="muted">' + esc(e.at) + ' — ' + esc(e.by) + ': ' + esc(e.what) + '</span>'; }).join('<br>') + '</div>' : '');
     h += '<div style="padding:10px" class="g2"><button class="btn l" onclick="viewPour(' + sid + ')">🔄 تحديث</button><button class="btn l" onclick="showPours()">رجوع</button></div>';
     view = 'pour'; document.getElementById('app').innerHTML = h; window.scrollTo(0, 0);
@@ -1553,6 +1582,27 @@ sigInit();
 render();
 syncAll(true);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+// ===== تحديث التطبيق: الموبايل بيسيب التطبيق مفتوح في الخلفية بالنسخة القديمة؛ نشيك على GitHub ونطلّع زرار تحديث =====
+var APP_V = 'site-sheet-v71', updShown = false;
+function checkUpdate() {
+  if (!navigator.onLine || updShown) return;
+  fetch('sw.js?x=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
+    var m = t.match(/site-sheet-v\d+/); if (!m || m[0] === APP_V) return;
+    updShown = true;
+    var b = document.createElement('div');
+    b.id = 'updBar';
+    b.style.cssText = 'position:fixed;left:10px;right:10px;bottom:12px;z-index:9999;background:#1f4e78;color:#fff;padding:12px 14px;border-radius:12px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-weight:bold;text-align:center;cursor:pointer';
+    b.textContent = '📥 فيه تحديث جديد للتطبيق — دوس هنا';
+    b.onclick = function () {
+      b.textContent = '⏳ بيحدّث…'; try { save(); } catch (x) {}
+      var go = function () { location.reload(); };
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(function (g) { return g && g.update(); }).then(go, go); else go();
+    };
+    document.body.appendChild(b);
+  }).catch(function () {});
+}
+setTimeout(checkUpdate, 4000); setInterval(checkUpdate, 10 * 60000);
+document.addEventListener('visibilitychange', function () { if (!document.hidden) checkUpdate(); });
 </script>
 </body>
 </html>
