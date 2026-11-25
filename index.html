@@ -71,7 +71,58 @@ body.zbig .g3{grid-template-columns:repeat(2,1fr)}
 var KEY = 'qc_site_app_v1';
 var S = load();
 function load() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('⚠️ الذاكرة مليانة'); } }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('⚠️ الذاكرة مليانة'); } obSoon(); }
+// ===== صندوق الإرسال في الخلفية: اللي لسه متبعتش بيتحط هنا، والموبايل يبعته لوحده أول ما النت يرجع حتى لو التطبيق مقفول =====
+function idb(fn) {
+  return new Promise(function (ok, no) {
+    if (!window.indexedDB) return no('no idb');
+    var q = indexedDB.open('qc_outbox', 1);
+    q.onupgradeneeded = function () { var db = q.result; if (!db.objectStoreNames.contains('out')) db.createObjectStore('out'); if (!db.objectStoreNames.contains('done')) db.createObjectStore('done'); };
+    q.onsuccess = function () { var db = q.result; try { fn(db, function (v) { db.close(); ok(v); }); } catch (e) { db.close(); no(e); } };
+    q.onerror = function () { no(q.error); };
+  });
+}
+var obT = null;
+function obSoon() { clearTimeout(obT); obT = setTimeout(obRefresh, 400); }
+function obRefresh() {
+  if (!S.api || !S.code) return;
+  var want = {};
+  S.order.forEach(function (id) {
+    var r = S.reports[id]; if (!r || r.closedSynced || r.updatedAt <= (r.syncedAt || 0)) return;
+    if (r.handedTo && r.lostSent) return;
+    if (!r.sid && !(r.data.rows || []).length && !(r.data.events || []).length && !r.final) return;
+    var b = { action: 'sync', code: S.code, report: { id: r.id, created: r.created || 0, data: r.data, final: !!r.final } };
+    if (r.final && r.signature) b.signature = r.signature;
+    want['rep:' + id] = { url: S.api, body: JSON.stringify(b), v: r.updatedAt, since: r.pendSince || r.updatedAt };
+  });
+  var pd = (S.disp || []).filter(function (d) { return !d.synced; });
+  if (pd.length) want['disp'] = { url: S.api, body: JSON.stringify({ action: 'dispatch', code: S.code, items: pd }), v: Math.max.apply(null, pd.map(function (d) { return d.ts || 0; })), since: Math.min.apply(null, pd.map(function (d) { return d.ts || Date.now(); })), ids: pd.map(function (d) { return d.id; }) };
+  idb(function (db, done) {
+    var tx = db.transaction('out', 'readwrite'), st = tx.objectStore('out');
+    st.getAllKeys().onsuccess = function (e) { (e.target.result || []).forEach(function (k) { if (!want[k]) st.delete(k); }); Object.keys(want).forEach(function (k) { st.put(want[k], k); }); };
+    tx.oncomplete = function () { done(Object.keys(want).length); };
+  }).then(function (n) {
+    if (n && navigator.serviceWorker) navigator.serviceWorker.ready.then(function (g) { if (g.sync) return g.sync.register('outbox'); }).catch(function () {});
+  }).catch(function () {});
+}
+/** اللي الموبايل بعته في الخلفية والتطبيق مقفول: نعلّمه إنه اتبعت */
+function obApplyDone() {
+  return idb(function (db, done) {
+    var tx = db.transaction('done', 'readwrite'), st = tx.objectStore('done'), got = [];
+    st.openCursor().onsuccess = function (e) { var c = e.target.result; if (!c) return; got.push({ k: c.key, v: c.value }); c.delete(); c.continue(); };
+    tx.oncomplete = function () { done(got); };
+  }).then(function (got) {
+    var n = 0;
+    got.forEach(function (g) {
+      if (g.k.indexOf('rep:') === 0) {
+        var r = S.reports[g.k.slice(4)]; if (!r) return; var res = g.v.res || {};
+        if (res.ok) { if ((g.v.v || 0) > (r.syncedAt || 0)) r.syncedAt = g.v.v; if (res.sid) r.sid = res.sid; if (r.final && res.final) r.closedSynced = true; n++; }
+        else if (res.handedOver) { r.handedTo = res.owner; r.lostSent = true; n++; }
+      } else if (g.k === 'disp' && g.v.res && g.v.res.ok) { (S.disp || []).forEach(function (d) { if ((g.v.ids || []).indexOf(d.id) >= 0) d.synced = true; }); n++; }
+    });
+    if (n) { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} if (typeof render === 'function' && view === 'home') render(); toast('📤 اتبعت في الخلفية وإنت قافل التطبيق'); }
+  }).catch(function () {});
+}
 S.reports = S.reports || {}; S.order = S.order || []; S.clients = S.clients || []; S.sites = S.sites || {}; S.disp = S.disp || []; S.dispToday = S.dispToday || [];
 var qs = new URLSearchParams(location.search);
 if (qs.get('api')) { S.api = qs.get('api'); save(); history.replaceState(null, '', location.pathname); }
@@ -90,7 +141,32 @@ function mins(hm) { if (!hm) return null; var p = hm.split(':'); return (+p[0]) 
 function since(hm) { var m = mins(hm); if (m == null) return null; var n = mins(nowHM()); return (n - m + 1440) % 1440; }
 
 // ===================== الشبكة والمزامنة =====================
+/** الحاجات اللي لسه متبعتتش: من امتى؟ */
+function pendInfo() {
+  var now = Date.now(), list = [];
+  S.order.forEach(function (id) { var r = S.reports[id]; if (r && !r.closedSynced && !r.handedTo && ((r.data.rows || []).length || r.sid) && r.updatedAt > (r.syncedAt || 0)) { r.pendSince = r.pendSince || r.updatedAt; list.push({ t: r.pendSince, what: 'صبة ' + ((r.data.header || {}).client || '') }); } else if (r) delete r.pendSince; });
+  (S.disp || []).forEach(function (d) { if (!d.synced) list.push({ t: d.ts || now, what: 'خروج ' + (d.truck || '') }); });
+  (S.prod || []).forEach(function (d) { if (!d.synced) list.push({ t: d.ts || now, what: 'QC-F-25' }); });
+  var old = list.reduce(function (a, x) { return Math.min(a, x.t); }, now);
+  return { n: list.length, min: Math.round((now - old) / 60000), list: list };
+}
+var pendNotified = 0;
+function pendWatch() {
+  var p = pendInfo(), bar = document.getElementById('pendBar');
+  if (p.n && p.min >= 10) {
+    if (!bar) { bar = document.createElement('div'); bar.id = 'pendBar'; bar.style.cssText = 'position:sticky;top:0;z-index:999;background:#c0392b;color:#fff;padding:9px 12px;font-weight:bold;text-align:center'; document.body.insertBefore(bar, document.body.firstChild); }
+    bar.innerHTML = '⚠️ فيه ' + p.n + ' حاجة متبعتتش للسيرفر من ' + p.min + ' دقيقة' + (navigator.onLine ? ' — النت ضعيف؟' : ' — مفيش نت') +
+      ' <button class="btn l mini" style="margin-right:8px" onclick="syncAll(true);if(S.role===\'sup\')syncDispatch(true);toast(\'📤 بيحاول يبعت…\')">📤 ابعت دلوقتي</button>';
+    // التطبيق في الخلفية: إشعار كل نص ساعة
+    if (document.hidden && p.min >= 15 && Date.now() - pendNotified > 30 * 60000 && window.Notification && Notification.permission === 'granted' && navigator.serviceWorker) {
+      pendNotified = Date.now();
+      navigator.serviceWorker.ready.then(function (g) { g.showNotification('⚠️ فيه ' + p.n + ' حاجة متبعتتش', { body: 'من ' + p.min + ' دقيقة — افتح النت عشان توصل للسيرفر', tag: 'pending', renotify: true }); }).catch(function () {});
+    }
+  } else if (bar) bar.remove();
+}
+setInterval(pendWatch, 30000); setTimeout(pendWatch, 3000);
 function setNet() {
+  try { pendWatch(); } catch (x) {}
   var pend = S.order.filter(function (id) { var r = S.reports[id]; return r && !r.closedSynced && !r.handedTo && ((r.data.rows || []).length || r.sid) && r.updatedAt > (r.syncedAt || 0); }).length + S.disp.filter(function (d) { return !d.synced; }).length + (S.prod || []).filter(function (d) { return !d.synced; }).length;
   document.getElementById('net').textContent = (navigator.onLine ? '🟢 متصل' : '🔴 من غير نت') + (pend ? ' · ⏳ ' + pend : '');
 }
@@ -1617,9 +1693,14 @@ applyZoom();
 sigInit();
 render();
 syncAll(true);
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then(function (g) {
+  // تحديث التطبيق في الخلفية (أندرويد بيقرر الوقت، غالباً مرة كل كام ساعة لما يكون فيه نت)
+  try { if (g.periodicSync) navigator.permissions.query({ name: 'periodic-background-sync' }).then(function (p) { if (p.state === 'granted') g.periodicSync.register('update', { minInterval: 6 * 3600000 }).catch(function () {}); }); } catch (x) {}
+}).catch(function () {});
+setTimeout(function () { obApplyDone(); obRefresh(); }, 1500);
+document.addEventListener('visibilitychange', function () { if (!document.hidden) obApplyDone(); });
 // ===== تحديث التطبيق: الموبايل بيسيب التطبيق مفتوح في الخلفية بالنسخة القديمة؛ نشيك على GitHub ونطلّع زرار تحديث =====
-var APP_V = 'site-sheet-v74', updShown = false;
+var APP_V = 'site-sheet-v76', updShown = false;
 function checkUpdate() {
   if (!navigator.onLine || updShown) return;
   fetch('sw.js?x=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
