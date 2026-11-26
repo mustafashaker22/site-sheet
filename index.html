@@ -233,6 +233,7 @@ function syncAll(force) {
           toast('🔒 الصبة #' + (res.sid || '') + ' اتقفلت من المدير — لو لسه شغال افتح صبة جديدة');
           if (view === 'rep' && cur === r) goHome();
         }
+        if (res.drop) try { if (applyDrop(r.data, res.drop)) { save(); toast('✂️ المدير نقل عربيات من الصبة دي لشيت عميل تاني'); bg(function () { if (view === 'rep' && cur === r) renderReport(); }); } } catch (e) {}
         liveMsgs[r.id] = res.live || [];
         if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists;
         r.incoming = res.incoming || []; notifyNew(r);
@@ -1361,6 +1362,42 @@ function mgrSavePour() {
     toast('✅ اتحفظ' + (r.diff && r.diff.length ? ': ' + r.diff.join(' · ') : '')); var sid = cur.mgrSid; delete S.reports[cur.id]; cur = null; viewPour(sid);
   }).catch(function () { toast('❌ محتاج نت'); });
 }
+/* نفس مفاتيح السيرفر (rowKey_/evKey_) */
+function rowKeyJ(r) { return String(r.truck || '').toUpperCase().replace(/[\s\-_.]/g, '').replace(/^T(?=\d)/, '') + '|' + (r.exit || '') + '|' + (r.arrival || ''); }
+function evKeyJ(e) { return (e.type || '') + '|' + (e.from || '') + '|' + (e.pump_id || '') + '|' + String(e.text || '').slice(0, 40); }
+function applyDrop(d, del) {
+  var rk = {}, ek = {}; (del.rows || []).forEach(function (k) { rk[k] = 1; }); (del.events || []).forEach(function (k) { ek[k] = 1; });
+  var rows = d.rows || [], map = [], n = 0, out = [], ev0 = (d.events || []).length;
+  rows.forEach(function (r) { if (!rk[rowKeyJ(r)]) { n++; out.push(r); } map.push(n); });
+  d.events = (d.events || []).filter(function (e) { return !ek[evKeyJ(e)]; });
+  if (out.length === rows.length && d.events.length === ev0) return false;
+  if (out.length !== rows.length) { d.events.forEach(function (e) { var ar = +e.after_row || 0; if (ar) e.after_row = map[ar - 1] || null; }); d.rows = out; }
+  return true;
+}
+/* المدير: عربيات اتسجلت هنا وهي لعميل تاني (نفس المضخة) → شيت جديد */
+var splitData = null;
+function mgrSplit(sid) {
+  var d = splitData; if (!d) return;
+  var rows = d.rows || [], lo = (d.events || []).filter(function (e) { return e.type === 'leftover' && e.client; }).slice(-1)[0];
+  var h = '<div class="card"><h3>✂️ فصل عربيات لشيت عميل تاني (#' + sid + ')</h3><p class="muted">علّم العربيات اللي اتصبت للعميل التاني بنفس المضخة. هيتعملها شيت جديد مقفول باسم العميل ده، وتتشال من الشيت ده (ومن موبايل الفني).</p>' +
+    rows.map(function (x, i) { return '<label class="chk" style="display:block;padding:6px 0;border-bottom:1px solid #eee"><input type="checkbox" class="spl" value="' + i + '"' + (x.diverted ? ' checked' : '') + '> ' + (i + 1) + ' · <b>' + esc(x.truck || '') + '</b> · ' + esc(x.qty_m3 || '') + ' م³ · ' + esc(x.exit || '--') + ' ← ' + esc(x.end || '--') + (x.diverted ? ' <span class="badge y">اتحولت</span>' : '') + (x.note ? ' <span class="muted">' + esc(x.note) + '</span>' : '') + '</label>'; }).join('') +
+    '<label style="margin-top:8px">العميل</label><input id="spC" list="spCl" value="' + esc(lo ? lo.client : '') + '"><datalist id="spCl">' + (S.clients || []).map(function (c) { return '<option value="' + esc(c) + '">'; }).join('') + '</datalist>' +
+    '<div class="g2" style="margin-top:6px"><div><label>الموقع</label><input id="spS" value="' + esc((d.header || {}).site || '') + '"></div><div><label>العنصر</label><input id="spE" value=""></div></div>' +
+    '<div class="g2" style="margin-top:10px"><button class="btn g" onclick="mgrSplitGo(' + sid + ')">✂️ اعمل الشيت</button><button class="btn l" onclick="viewPour(' + sid + ')">إلغاء</button></div></div>';
+  document.getElementById('app').innerHTML = h; window.scrollTo(0, 0);
+}
+function mgrSplitGo(sid) {
+  var idx = [].slice.call(document.querySelectorAll('.spl:checked')).map(function (x) { return +x.value; });
+  var c = document.getElementById('spC').value.trim(), st = document.getElementById('spS').value.trim(), el = document.getElementById('spE').value.trim();
+  if (!idx.length) return alert('علّم العربيات');
+  if (!c) return alert('اكتب العميل');
+  if (!confirm(idx.length + ' عربية هتتنقل من #' + sid + ' لشيت جديد باسم «' + c + '»' + (st ? ' — ' + st : '') + '.\nتكمل؟')) return;
+  toast('⏳ بيعمل الشيت…');
+  api({ action: 'mgrsplit', code: S.code, sid: sid, rows: idx, client: c, site: st, element: el }).then(function (r) {
+    if (!r || !r.ok) return alert('⚠️ ' + ((r && r.error) || 'السيرفر رجّع رد غلط — اتأكد إن Code.gs الجديد اتنشر'));
+    toast('✅ اتعمل شيت #' + r.sid); viewPour(r.sid);
+  }).catch(function () { toast('❌ محتاج نت'); });
+}
 function mgrClose(sid) {
   var why = prompt('الصبة #' + sid + ' هتتقفل على إنها خلصت (الفني مقفلهاش).\nاكتب السبب:', 'الصبة خلصت والفني مقفلهاش');
   if (why === null) return;
@@ -1609,6 +1646,7 @@ function viewPour(sid) {
     h += '</table></div>';
     if (r.printUrl) h += '<div style="padding:0 10px"><a class="btn l" style="display:block;text-align:center;text-decoration:none" target="_blank" href="' + esc(r.printUrl) + '">🖨 السايت شيت</a></div>';
     h += '<div style="padding:6px 10px 0">' + xlsxBtn('site', sid, 'Excel السايت شيت') + '</div>';
+    if (S.mgr) { splitData = d; h += '<div style="padding:0 10px 6px"><button class="btn l" onclick="mgrSplit(' + sid + ')">✂️ عربيات لعميل تاني ← شيت جديد</button></div>'; }
     if (S.mgr) h += '<div style="padding:0 10px" class="g2"><button class="btn g" onclick="mgrOpenPour(' + sid + ')">👁 افتحها زي الفني / عدّل</button>' +
       (d.qa ? '<span class="st f" style="text-align:center;padding:10px">✅ معتمدة — ' + esc(d.qa.name) + '</span>' : r.status === 'مأكد' ? '<button class="btn" onclick="mgrApprove(' + sid + ')">✅ اعتماد</button>' : '<button class="btn r" onclick="mgrClose(' + sid + ')">🔒 قفل الصبة (خلصت)</button>') + '</div>' +
       ((d.edits || []).length ? '<div class="card"><b>✏️ تعديلات المدير:</b><br>' + d.edits.map(function (e) { return '<span class="muted">' + esc(e.at) + ' — ' + esc(e.by) + ': ' + esc(e.what) + '</span>'; }).join('<br>') + '</div>' : '');
@@ -1804,7 +1842,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then
 setTimeout(function () { obApplyDone(); obRefresh(); }, 1500);
 document.addEventListener('visibilitychange', function () { if (!document.hidden) obApplyDone(); });
 // ===== تحديث التطبيق: الموبايل بيسيب التطبيق مفتوح في الخلفية بالنسخة القديمة؛ نشيك على GitHub ونطلّع زرار تحديث =====
-var APP_V = 'site-sheet-v82', updShown = false;
+var APP_V = 'site-sheet-v83', updShown = false;
 function checkUpdate() {
   if (!navigator.onLine || updShown) return;
   fetch('sw.js?x=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
