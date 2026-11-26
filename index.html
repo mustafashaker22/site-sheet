@@ -20,6 +20,7 @@ header small{opacity:.85}
 .card{background:#fff;margin:10px;padding:12px;border-radius:12px;box-shadow:0 1px 3px #0002}
 .card h3{margin:0 0 8px;font-size:calc(16px * var(--z,1));display:flex;justify-content:space-between;align-items:center;gap:6px}
 label{font-size:calc(14px * var(--z,1));color:#666;display:block;margin-bottom:2px}
+#noteEd{position:fixed;inset:0;z-index:9999;background:#fff;display:flex;flex-direction:column;padding:10px;gap:8px}#noteEd .neTop{display:flex;align-items:center;justify-content:space-between;gap:8px}#noteEd .neTop b{font-size:17px;flex:1}#noteEd .neBtns{display:flex;gap:6px}#noteEd .neBtns .btn{width:auto;padding:10px 16px}#noteEd textarea{flex:1;font-size:21px;line-height:1.6;resize:none}[data-note]{background:#f4f9ff;cursor:pointer}
 input,select,textarea{width:100%;font-size:calc(18px * var(--z,1));padding:10px 7px;border:1px solid #bbb;border-radius:8px;background:#fff;font-family:inherit}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 button{font-family:inherit;font-size:calc(17px * var(--z,1));border:0;border-radius:10px;padding:11px;cursor:pointer}
@@ -120,7 +121,7 @@ function obApplyDone() {
         else if (res.handedOver) { r.handedTo = res.owner; r.lostSent = true; n++; }
       } else if (g.k === 'disp' && g.v.res && g.v.res.ok) { (S.disp || []).forEach(function (d) { if ((g.v.ids || []).indexOf(d.id) >= 0) d.synced = true; }); n++; }
     });
-    if (n) { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} if (typeof render === 'function' && view === 'home') render(); toast('📤 اتبعت في الخلفية وإنت قافل التطبيق'); }
+    if (n) { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} if (typeof render === 'function') bg(function () { if (view === 'home') render(); }); toast('📤 اتبعت في الخلفية وإنت قافل التطبيق'); }
   }).catch(function () {});
 }
 S.reports = S.reports || {}; S.order = S.order || []; S.clients = S.clients || []; S.sites = S.sites || {}; S.disp = S.disp || []; S.dispToday = S.dispToday || [];
@@ -206,7 +207,7 @@ function syncAll(force) {
     if (!force && Date.now() - Math.max(r.lastIncoming || 0, r.lastPing || 0) < 60000) return;
     r.lastIncoming = Date.now();
     api({ action: 'incoming', code: S.code, client: r.data.header.client, site: r.data.header.site, since: r.created || 0 }).then(function (res) {
-      if (res && res.ok) { r.incoming = res.incoming || []; notifyNew(r); save(); if (view === 'rep' && cur === r) renderReport(); }
+      if (res && res.ok) { r.incoming = res.incoming || []; notifyNew(r); save(); bg(function () { if (view === 'rep' && cur === r) renderReport(); }); }
     }).catch(function () {});
   });
   if (!ids.length) return;
@@ -214,7 +215,7 @@ function syncAll(force) {
   var i = 0;
   (function next() {
     if (i >= ids.length) {
-      syncing = false; save(); setNet(); if (view === 'rep' || view === 'home') render();
+      syncing = false; save(); setNet(); bg(function () { if (view === 'rep' || view === 'home') render(); });
       var more = S.order.some(function (id) { var x = S.reports[id]; return x && !x.closedSynced && !x.handedTo && x.updatedAt > (x.syncedAt || 0); });
       if (more) setTimeout(function () { syncAll(false); }, 300);
       return;
@@ -234,7 +235,7 @@ function syncAll(force) {
         liveMsgs[r.id] = res.live || [];
         if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists;
         r.incoming = res.incoming || []; notifyNew(r);
-        if (res.ddates && fillDates(r.data, res.ddates) && !r.final && sortRows(r.data, r.created)) { r.updatedAt = Date.now(); save(); if (view === 'rep' && cur === r) renderReport(); }
+        if (res.ddates && fillDates(r.data, res.ddates) && !r.final && sortRows(r.data, r.created)) { r.updatedAt = Date.now(); save(); bg(function () { if (view === 'rep' && cur === r) renderReport(); }); }
       } else if (res && res.handedOver && !sameName(res.owner, S.name)) {
         r.handedTo = res.owner; r.lostSent = true; save();
         toast(res.lost ? '⚠️ عندك ' + res.lost + ' عربية في الصبة دي ماوصلتش قبل التسليم — اتبعتت لـ ' + res.owner + ' والمدير عشان يضيفوها' : '🔁 الصبة دي اتسلمت لـ ' + res.owner);
@@ -250,6 +251,51 @@ window.addEventListener('offline', setNet);
 setInterval(function () { syncAll(false); if (view === 'rep') renderAlerts(); }, 60000);
 
 var tSave;
+/* ===== الكيبورد: أي تحديث من السيرفر يستنى لحد ما الفني يخلص كتابة ===== */
+var pendBg = null;
+function editing() {
+  if (document.getElementById('noteEd')) return true;
+  var a = document.activeElement;
+  return !!(a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|file)$/.test(a.type))) && !a.readOnly);
+}
+function bg(fn) { if (editing()) { pendBg = fn; return; } fn(); }
+document.addEventListener('focusout', function () {
+  setTimeout(function () { if (pendBg && !editing()) { var f = pendBg; pendBg = null; f(); } }, 400);
+});
+/* ===== شاشة كتابة الملاحظات ===== */
+function noteEd(title, val, cb) {
+  var old = document.getElementById('noteEd'); if (old) old.remove();
+  var d = document.createElement('div'); d.id = 'noteEd';
+  d.innerHTML = '<div class="neTop"><b></b><div class="neBtns"><button class="btn" id="neOk">✅ تم</button><button class="btn l" id="neNo">إلغاء</button></div></div><textarea id="neTx" dir="rtl" placeholder="اكتب هنا..."></textarea>';
+  d.querySelector('b').textContent = title || 'ملاحظة';
+  var tx = d.querySelector('textarea'); tx.value = val || '';
+  document.body.appendChild(d); document.body.style.overflow = 'hidden';
+  function close(ok) { var v = tx.value; d.remove(); document.body.style.overflow = ''; if (ok) cb(v); else if (cb.cancel) cb.cancel(); setTimeout(function () { if (pendBg && !editing()) { var f = pendBg; pendBg = null; f(); } }, 300); }
+  d.querySelector('#neOk').onclick = function () { close(true); };
+  d.querySelector('#neNo').onclick = function () { close(false); };
+  setTimeout(function () { tx.focus(); try { tx.setSelectionRange(tx.value.length, tx.value.length); } catch (e) {} }, 60);
+}
+function isNoteField(el) {
+  if (el.hasAttribute('data-note')) return true;
+  if (el.tagName === 'INPUT' && (el.getAttribute('inputmode') || el.hasAttribute('data-t') || el.hasAttribute('list') || el.type !== 'text')) return false;
+  var lb = el.previousElementSibling, t = (lb && lb.tagName === 'LABEL' ? lb.textContent : '') + ' ' + (el.placeholder || '');
+  return /ملاحظ|مشاكل|السبب|سبب التعديل|التفاصيل/.test(t);
+}
+function tagNotes(root) {
+  (root || document).querySelectorAll('#app input, #app textarea').forEach(function (el) {
+    if (el._nt || el.disabled || !isNoteField(el)) return;
+    el._nt = 1; el.readOnly = true; el.setAttribute('data-note', ''); if (!el.value) el.placeholder = '✏️ اضغط هنا واكتب';
+  });
+}
+new MutationObserver(function () { tagNotes(); }).observe(document.getElementById('app'), { childList: true, subtree: true });
+document.addEventListener('click', function (e) {
+  var el = e.target.closest && e.target.closest('[data-note]'); if (!el || el.disabled) return;
+  e.preventDefault();
+  var lb = el.previousElementSibling, title = lb && lb.tagName === 'LABEL' ? lb.textContent : (el.placeholder && el.placeholder.indexOf('اضغط') < 0 ? el.placeholder : 'ملاحظة');
+  noteEd(title, el.value, function (v) {
+    if (el.tagName === 'INPUT') v = v.replace(/\s*\n+\s*/g, ' - ').trim(); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+});
 function touch() { if (!cur) return; cur.updatedAt = Date.now(); save(); setNet(); clearTimeout(tSave); tSave = setTimeout(function () { syncAll(false); }, 2500); }
 
 // ===================== الشاشات =====================
@@ -622,14 +668,14 @@ function setT(i, k, v) {
 function brokenLocal(id) { var b = (cur.data.broken || []).filter(function (y) { return y.dispatch_id === id; })[0]; return b ? b.note : ''; }
 function broke(id) {
   var x = (cur.incoming || []).filter(function (y) { return y.id === id; })[0]; if (!x) return;
-  var note = prompt('عربية ' + x.truck + ': إيه اللي حصل؟ (عطل / غرزت / مكانها فين)');
-  if (note === null) return;
+  noteEd('عربية ' + x.truck + ': إيه اللي حصل؟ (عطل / غرزت / مكانها فين)', '', function (note) {
   note = note.trim() || 'عطلت/غرزت';
   cur.data.broken = cur.data.broken || [];
   cur.data.broken.push({ dispatch_id: id, truck: x.truck, note: note, time: nowHM() });
   cur.data.events.push({ type: 'breakdown', type_ar: 'عربية عطلت/غرزت', from: nowHM(), to: null, after_row: cur.data.rows.length || null,
     text: 'عربية ' + x.truck + ' (خرجت ' + x.exit + ') ' + note, cause: note });
   touch(); renderReport();
+  });
 }
 /** العربية الجاية خلطتها غير رتبة الصبة (مثلاً 250 والصبة 300) */
 function mixWrong(x) {
@@ -746,10 +792,13 @@ function elementsUsed() {
 function delTruck(i) { if (confirm('تمسح العربية دي؟')) { cur.data.rows.splice(i, 1); cur.data.events.forEach(function (e) { if (e.after_row > i) e.after_row--; }); touch(); renderReport(); } }
 function addEvent(type) {
   var names = { pump_move: 'نقل المضخة', stop: 'وقفة', other: 'ملاحظة' };
-  var txt = type === 'other' ? prompt('اكتب الملاحظة:') : prompt('السبب؟ (اختياري)') ;
-  if (txt === null) return;
-  cur.data.events.push({ type: type, type_ar: names[type], from: type === 'other' ? null : nowHM(), to: null, after_row: cur.data.rows.length || null, text: txt || '', cause: txt || '' });
+  var t0 = nowHM();
+  noteEd(type === 'other' ? 'اكتب الملاحظة' : 'السبب؟ (اختياري)', '', function (txt) {
+  txt = txt.trim();
+  if (type === 'other' && !txt) return;
+  cur.data.events.push({ type: type, type_ar: names[type], from: type === 'other' ? null : t0, to: null, after_row: cur.data.rows.length || null, text: txt || '', cause: txt || '' });
   touch(); renderReport();
+  });
 }
 function endEvent(j) { cur.data.events[j].to = nowHM(); touch(); renderReport(); }
 function delEvent(j) { if (confirm('تمسح الحدث؟')) { cur.data.events.splice(j, 1); touch(); renderReport(); } }
@@ -1003,7 +1052,7 @@ function syncProd(force) {
       pend.forEach(function (d) { d.synced = true; });
       S.prodToday = res.today || []; if (res.silos) S.siloSt = res.silos; if (res.admix) S.admix = res.admix; if (res.admTypes) S.admTypes = res.admTypes; S.silos = S.silos || {}; S.prodToday.forEach(function (o) { if (!+o.adj && o.silo && o.cement_type) S.silos[String(o.silo).trim()] = { cement_type: o.cement_type, source: o.source || '' }; }); S.mixes = res.mixes || S.mixes || []; if (res.prodUrl) S.prodUrl = res.prodUrl;
       if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists; if (res.techs) S.techs = res.techs;
-      save(); if (view === 'prod' && !prodForm) renderProd(); else setNet();
+      save(); setNet(); bg(function () { if (view === 'prod' && !prodForm) renderProd(); });
     } else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
   }).catch(function () { setNet(); });
 }
@@ -1275,7 +1324,7 @@ function mgrOpenPour(sid) {
     S.reports[id] = { id: id, mgrSid: sid, mgrStatus: r.status, mgrOwner: r.owner, created: cr, updatedAt: 0, data: d };
     var moved = sortRows(d, cr);
     cur = S.reports[id]; view = 'rep'; render(); window.scrollTo(0, 0); if (moved) toast('ℹ️ رتّبت العربيات بوقت الوصول — ادوس «💾 حفظ التعديل» لو موافق');
-    if (d.header.client && r.status !== 'مأكد') api({ action: 'incoming', code: S.code, client: d.header.client, site: d.header.site, since: 0 }).then(function (x) { if (x && x.ok && cur === S.reports[id]) { cur.incoming = x.incoming || []; renderReport(); } });
+    if (d.header.client && r.status !== 'مأكد') api({ action: 'incoming', code: S.code, client: d.header.client, site: d.header.site, since: 0 }).then(function (x) { if (x && x.ok && cur === S.reports[id]) { cur.incoming = x.incoming || []; bg(function () { if (cur === S.reports[id] && view === 'rep') renderReport(); }); } });
   }).catch(function () { toast('❌ مقدرتش أوصل للسيرفر'); });
 }
 function mgrSavePour() {
@@ -1458,7 +1507,7 @@ function syncDispatch(force) {
   api({ action: 'dispatch', code: S.code, items: pend }).then(function (res) {
     syncing = false;
     if (S.disp.some(function (d) { return !d.synced && pend.indexOf(d) < 0; })) setTimeout(function () { syncDispatch(false); }, 300);
-    if (res && res.ok) { pend.forEach(function (d) { d.synced = true; }); S.dispToday = res.today || []; if (res.silos) S.siloSt = res.silos; if (res.admix) S.admix = res.admix; if (res.admTypes) S.admTypes = res.admTypes; if (res.siloWarn) S.siloWarn = res.siloWarn; if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists; if (res.techs) S.techs = res.techs; if (res.plantUrl) S.plantUrl = res.plantUrl; save(); if (!supForm && view !== 'pours' && view !== 'pour') render(); else setNet(); }
+    if (res && res.ok) { pend.forEach(function (d) { d.synced = true; }); S.dispToday = res.today || []; if (res.silos) S.siloSt = res.silos; if (res.admix) S.admix = res.admix; if (res.admTypes) S.admTypes = res.admTypes; if (res.siloWarn) S.siloWarn = res.siloWarn; if (res.clients) S.clients = res.clients; if (res.sites) S.sites = res.sites; if (res.lists) S.lists = res.lists; if (res.techs) S.techs = res.techs; if (res.plantUrl) S.plantUrl = res.plantUrl; save(); setNet(); bg(function () { if (!supForm && view !== 'pours' && view !== 'pour') render(); }); }
     else toast('⚠️ ' + ((res && res.error) || 'مشكلة في الإرسال'));
   }).catch(function () { syncing = false; setNet(); });
 }
@@ -1612,9 +1661,8 @@ function saveDispatch() {
   toast(navigator.onLine ? '✅ اتبعتت' : '📴 اتحفظت — هتتبعت أول ما النت يرجع');
 }
 function markBroken() {
-  var n = prompt('إيه اللي حصل؟ (عطل / غرزت / مكانها فين)');
-  if (n === null) return;
-  supForm.breakdown = n.trim() || 'عطلت/غرزت'; saveDispatch();
+  noteEd('إيه اللي حصل؟ (عطل / غرزت / مكانها فين)', '', function (n) {
+  supForm.breakdown = n.trim() || 'عطلت/غرزت'; saveDispatch(); });
 }
 function cancelDispatch() { if (!confirm('تلغي العربية دي؟')) return; supForm.cancelled = true; saveDispatch(); }
 
@@ -1673,7 +1721,7 @@ function askRoll() {
 function finish() {
   var d = cur.data, f = d.footer || {};
   if (!f.vibrator) { toast('اختار «استخدام الهزاز»'); document.getElementById('fVib').focus(); return; }
-  if ((d.events.length || d.rows.some(function (r) { return r.diverted; })) && !String(f.problems_text || '').trim()) { toast('فيه أحداث (نقل مضخة / وقفة / عربية اتحولت) — اكتب المشاكل'); document.getElementById('fProb').focus(); return; }
+  if ((d.events.length || d.rows.some(function (r) { return r.diverted; })) && !String(f.problems_text || '').trim()) { toast('فيه أحداث (نقل مضخة / وقفة / عربية اتحولت) — اكتب المشاكل'); document.getElementById('fProb').click(); return; }
   if (!hasInk && !confirm('مفيش إمضاء. تكمّل من غير إمضاء؟')) return;
   cur.data.header.technician = cur.data.header.technician || S.name;
   cur.data.closed = true;
@@ -1701,7 +1749,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then
 setTimeout(function () { obApplyDone(); obRefresh(); }, 1500);
 document.addEventListener('visibilitychange', function () { if (!document.hidden) obApplyDone(); });
 // ===== تحديث التطبيق: الموبايل بيسيب التطبيق مفتوح في الخلفية بالنسخة القديمة؛ نشيك على GitHub ونطلّع زرار تحديث =====
-var APP_V = 'site-sheet-v77', updShown = false;
+var APP_V = 'site-sheet-v78', updShown = false;
 function checkUpdate() {
   if (!navigator.onLine || updShown) return;
   fetch('sw.js?x=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
