@@ -1502,7 +1502,8 @@ function saveSiloForm() {
 var supForm = null;
 function syncDispatch(force) {
   var pend = S.disp.filter(function (d) { return !d.synced; });
-  if (!pend.length && !force) return;
+  if (!pend.length && !force && Date.now() - (S.lastDispPull || 0) < 3 * 60000) return;   // كل 3 دقايق نجيب التنبيهات
+  S.lastDispPull = Date.now();
   syncing = true;
   api({ action: 'dispatch', code: S.code, items: pend }).then(function (res) {
     syncing = false;
@@ -1517,6 +1518,13 @@ function renderSup() {
     '<div style="padding:0 10px" class="g3"><button class="btn l" onclick="openProd()">🧪 الخلطات QC-F-25</button><button class="btn l" onclick="openSilo()">🏭 المخزون والجرد</button><button class="btn l" onclick="openProdRep()">📊 الإنتاجية</button></div>' + siloCards(true);
   if (S.mgr) h = mgrBar() + h;
   var srv = {}; S.dispToday.forEach(function (d) { srv[d.id] = d; });
+  var wr = S.dispToday.filter(function (d) { return d.wrong; });
+  if (wr.length) h = '<div class="card" style="border:2px solid #c0392b;background:#fff5f5">' + wr.map(function (d) {
+    var w = d.wrong;
+    return '<div style="padding:6px 0;border-bottom:1px solid #f1c6c6"><b>⚠️ ' + esc(d.truck) + ' خروج ' + esc(d.exit) + '</b> اتسجلت في المحطة لـ «' + esc(d.client) + '»' +
+      '<br>بس الفني <b>' + esc(w.tech || '') + '</b> سجّلها <b>وصلت عنده في «' + esc(w.client) + '»</b> (صبة #' + esc(w.sid) + ')' + (d.by ? '<br><span class="muted">خرّجها: ' + esc(d.by) + '</span>' : '') +
+      '<div class="g2" style="margin-top:6px"><button class="btn g" onclick="fixWc(\'' + d.id + '\',1)">✅ صحّح لـ ' + esc(w.client) + '</button><button class="btn l" onclick="fixWc(\'' + d.id + '\',0)">❌ لأ، الخروج صح</button></div></div>';
+  }).join('') + '</div>' + h;
   var today = new Date().toDateString();
   var list = S.disp.filter(function (d) { return new Date(d.ts).toDateString() === today; }).slice().reverse();
   h += '<div class="card list" style="padding:0">' + (list.map(function (d) {
@@ -1585,6 +1593,17 @@ function newDispatch() {
   var last = S.disp[S.disp.length - 1] || {};
   supForm = { id: uid(), ts: Date.now(), date: today(), exit: nowHM(), client: last.client || '', site: last.site || '', silo: last.silo || '', grade: usualMix(last.client, last.site) || last.grade || '', qty_m3: last.qty_m3 || 9, truck: '', driver: '', ticket: '', exit_slump: '', temp: '', samples: '', site_tech: last.site_tech || '', sup_note: '' };
   render();
+}
+function fixWc(id, fix) {
+  var d = S.dispToday.filter(function (x) { return x.id === id; })[0]; if (!d || !d.wrong) return;
+  if (!confirm(fix ? 'تغيّر عميل ' + d.truck + ' (خروج ' + d.exit + ') من «' + d.client + '» لـ «' + d.wrong.client + '»؟' : 'متأكد إن ' + d.truck + ' راحت «' + d.client + '»؟\nهيتبعت للمدير إن سطر الفني ' + (d.wrong.tech || '') + ' غلط.')) return;
+  if (!navigator.onLine) return toast('محتاج نت');
+  toast('⏳ بيعدّل…');
+  api({ action: 'wcfix', code: S.code, id: id, fix: !!fix }).then(function (r) {
+    if (!r || !r.ok) return toast('❌ ' + ((r && r.error) || 'مشكلة'));
+    if (fix) S.disp.forEach(function (x) { if (x.id === id) x.client = d.wrong.client; });
+    S.dispToday = r.today || S.dispToday; save(); toast(fix ? '✅ اتصححت' : '✔ اتبلّغ المدير'); bg(function () { if (!supForm && view === 'home') render(); });
+  }).catch(function () { toast('مشكلة في النت'); });
 }
 function editDispatch(id) { var d = S.disp.filter(function (x) { return x.id === id; })[0]; if (d) { supForm = JSON.parse(JSON.stringify(d)); render(); } }
 function sf(k, v) { supForm[k] = v; }
@@ -1749,7 +1768,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then
 setTimeout(function () { obApplyDone(); obRefresh(); }, 1500);
 document.addEventListener('visibilitychange', function () { if (!document.hidden) obApplyDone(); });
 // ===== تحديث التطبيق: الموبايل بيسيب التطبيق مفتوح في الخلفية بالنسخة القديمة؛ نشيك على GitHub ونطلّع زرار تحديث =====
-var APP_V = 'site-sheet-v78', updShown = false;
+var APP_V = 'site-sheet-v79', updShown = false;
 function checkUpdate() {
   if (!navigator.onLine || updShown) return;
   fetch('sw.js?x=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
