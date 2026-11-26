@@ -647,6 +647,7 @@ function arrived(id) {
   var ag = since(x.exit);
   if (ag != null && ag > 180 && !confirm('⚠️ العربية ' + (x.truck || '') + ' خرجت من المحطة ' + x.exit + ' (من ' + Math.floor(ag / 60) + ' ساعة و' + (ag % 60) + ' دقيقة).\nمتأكد إنها وصلت عندك دلوقتي؟\n\nلو مش جاية عندك ادوس «إلغاء».')) return;
   var mw = mixWrong(x);
+  if (x.nameDiff && !confirm('⚠️ العربية دي خارجة من المحطة باسم «' + x.nameDiff + '»\nوالصبة متسجلة باسم «' + ((cur.data.header || {}).client || '') + '».\n\nالبون بيطلع باسم اللي بيحاسب — اتأكد من المشرف مين الصح.\nتسجّل وصولها هنا؟')) return;
   if (mw && !confirm('⚠️ ' + mw + '\n\nمتصبهاش قبل ما تكلم المحطة وتتأكد.\nتسجّل وصولها؟')) return;
   var br = x.broken || brokenLocal(id);
   cur.data.rows.push({ truck: x.truck, driver: x.driver, qty_m3: Number(x.qty_m3) || x.qty_m3, exit: x.exit, arrival: nowHM(), dispatch_id: x.id, ticket: x.ticket || null, exit_slump: (x.exit_slump === '' || x.exit_slump == null) ? null : x.exit_slump,
@@ -767,7 +768,7 @@ function renderReport() {
   if (inc.length && !ro) incHtml += '<div class="card" style="border-right:5px solid var(--b)"><h3>🚚 جاية من المحطة</h3>' + inc.map(function (x) {
     var br = x.broken || brokenLocal(x.id);
     return '<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee"><div><b>' + esc(x.truck) + '</b> · ' + esc(x.qty_m3 || '') + ' م³' +
-      (br ? ' <span class="badge">🛠 عطلانة</span>' : '') + (x.otherSite ? ' <span class="badge y">لموقع: ' + esc(x.otherSite) + '</span>' : '') + (mixWrong(x) ? '<br><span class="badge" style="background:#c0392b;color:#fff">⚠️ ' + esc(mixWrong(x)) + '</span>' : '') + '<br><span class="muted">خرجت ' + esc(x.exit) + ' (' + since(x.exit) + ' د)' + ' · ' + esc(x.driver || '') + (br ? ' · ' + esc(br) : '') + '</span></div>' +
+      (br ? ' <span class="badge">🛠 عطلانة</span>' : '') + (x.otherSite ? ' <span class="badge y">لموقع: ' + esc(x.otherSite) + '</span>' : '') + (mixWrong(x) ? '<br><span class="badge" style="background:#c0392b;color:#fff">⚠️ ' + esc(mixWrong(x)) + '</span>' : '') + (x.nameDiff ? '<br><span class="badge" style="background:#e67e22;color:#fff">⚠️ خارجة باسم: ' + esc(x.nameDiff) + '</span>' : '') + '<br><span class="muted">خرجت ' + esc(x.exit) + ' (' + since(x.exit) + ' د)' + ' · ' + esc(x.driver || '') + (br ? ' · ' + esc(br) : '') + '</span></div>' +
       '<div style="display:flex;gap:4px">' + (br ? '' : '<button class="btn l mini" onclick="broke(\'' + x.id + '\')">🛠</button>') +
       '<button class="btn g mini" onclick="arrived(\'' + x.id + '\')">📍 وصلت</button></div></div>';
   }).join('') + '</div>';
@@ -1700,7 +1701,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then
 setTimeout(function () { obApplyDone(); obRefresh(); }, 1500);
 document.addEventListener('visibilitychange', function () { if (!document.hidden) obApplyDone(); });
 // ===== تحديث التطبيق: الموبايل بيسيب التطبيق مفتوح في الخلفية بالنسخة القديمة؛ نشيك على GitHub ونطلّع زرار تحديث =====
-var APP_V = 'site-sheet-v76', updShown = false;
+var APP_V = 'site-sheet-v77', updShown = false;
 function checkUpdate() {
   if (!navigator.onLine || updShown) return;
   fetch('sw.js?x=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
